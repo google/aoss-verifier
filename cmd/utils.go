@@ -1,4 +1,4 @@
-package utils
+package cmd
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ import (
 )
 
 
-func DownloadFromGCS(serviceAccountKeyFilePath string, bucketName string, objectName string, filePath string) error {
+func downloadFromGCS(serviceAccountKeyFilePath string, bucketName string, objectName string, filePath string) error {
 	// Create a context
 	ctx := context.Background()
 
@@ -54,7 +54,7 @@ func DownloadFromGCS(serviceAccountKeyFilePath string, bucketName string, object
 		return fmt.Errorf("Failed to download the file: %v", err)
 	}
 
-	fmt.Printf("File downloaded successfully: %s\n", filePath)
+	fmt.Printf("File downloaded at %s\n", filePath)
 
 	// Close the client
 	client.Close()
@@ -63,7 +63,7 @@ func DownloadFromGCS(serviceAccountKeyFilePath string, bucketName string, object
 }
 
 
-func UnzipFile(zipFile, destDir string) error {
+func unzipFile(zipFile, destDir string) error {
 	reader, err := zip.OpenReader(zipFile)
 	if err != nil {
 		return fmt.Errorf("failed to open zip file: %v", err)
@@ -99,7 +99,7 @@ func UnzipFile(zipFile, destDir string) error {
 		reader.Close()
 	}
 
-	fmt.Println("File unzipped successfully")
+	fmt.Println("File unzipped")
 
 	return nil
 }
@@ -129,7 +129,7 @@ type sbom struct {
 }
 
 
-func GetSigURL(jsonFile string, key string) (string, error) {
+func getSigURL(jsonFile string, key string) (string, error) {
 	// Read the JSON file
 	data, err := ioutil.ReadFile(jsonFile)
 	if err != nil {
@@ -163,7 +163,7 @@ func GetSigURL(jsonFile string, key string) (string, error) {
 }
 
 
-func ExtractBucketAndObject(url string) (bucketName, objectName string, err error) {
+func extractBucketAndObject(url string) (bucketName, objectName string, err error) {
 	// Remove the "gs://" prefix
 	url = strings.TrimPrefix(url, "gs://")
 
@@ -177,7 +177,7 @@ func ExtractBucketAndObject(url string) (bucketName, objectName string, err erro
 }
 
 
-func VerifyDigest(dataFilePath, destDir string) (bool, error) {
+func verifyDigest(dataFilePath, destDir string) (bool, error) {
 	// generate sha256 hash
 	packageFile, err := os.Open(dataFilePath)
 	if err != nil {
@@ -207,7 +207,7 @@ func VerifyDigest(dataFilePath, destDir string) (bool, error) {
 }
 
 
-func VerifySignatures(destDir string) (*x509.Certificate, bool, error) {
+func verifySignatures(destDir string) (*x509.Certificate, bool, error) {
 	// Step 1: Extract signature and convert to binary
 	signatureFilePath := filepath.Join(destDir, "signature.txt")
 	signatureBytes, err := extractAndConvertToBinary(signatureFilePath)
@@ -245,7 +245,7 @@ func VerifySignatures(destDir string) (*x509.Certificate, bool, error) {
 }
 
 
-func DownloadRootCert(rootCertPath string) error {
+func downloadRootCert(rootCertPath string) error {
 	file, err := os.Create(rootCertPath)
 	if err != nil {
 		return fmt.Errorf("Failed to create file: %v", err)
@@ -275,15 +275,15 @@ func DownloadRootCert(rootCertPath string) error {
 }
 
 
-func VerifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificate) ([][]*x509.Certificate, bool, error) {
+func verifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificate) (bool, error) {
 	rootBytes, err := ioutil.ReadFile(rootCertPath)
 	if err != nil {
-		return nil, false, fmt.Errorf("Failed to read CA file: %v", err)
+		return false, fmt.Errorf("Failed to read CA file: %v", err)
 	}
 
 	chainBytes, err := ioutil.ReadFile(certChainPath)
 	if err != nil {
-		return nil, false, fmt.Errorf("Failed to read certificate chain file: %v", err)
+		return false, fmt.Errorf("Failed to read certificate chain file: %v", err)
 	}
 
 	// Create a certificate pool and add the CA certificate to it
@@ -299,13 +299,12 @@ func VerifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificat
 	// Add the intermediate certificates to the verifier
 	verifier.Intermediates.AppendCertsFromPEM(chainBytes)
 
-	chains, err := cert.Verify(verifier)
-	if err != nil {
+	if _, err := cert.Verify(verifier); err != nil {
 		fmt.Println(err)
-		return nil, false, nil
+		return false, nil
 	}
 
-	return chains, true, nil
+	return true, nil
 }
 
 
