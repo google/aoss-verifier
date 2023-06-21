@@ -11,6 +11,12 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"strings"
+	"crypto/sha256"
+	"encoding/hex"
+	"crypto/x509"
+	"crypto/ecdsa"
+	"encoding/pem"
+	"net/http"
 
 	"google.golang.org/api/option"
 	"cloud.google.com/go/storage"
@@ -168,4 +174,162 @@ func ExtractBucketAndObject(url string) (bucketName, objectName string, err erro
 	}
 
 	return parts[0], parts[1], nil
+}
+
+
+func VerifyDigest(dataFilePath, destDir string) (bool, error) {
+	// generate sha256 hash
+	packageFile, err := os.Open(dataFilePath)
+	if err != nil {
+		return false, err
+	}
+	defer packageFile.Close()
+
+	dataDigest := sha256.New()
+	if _, err := io.Copy(dataDigest, packageFile); err != nil {
+		return false, err
+	}
+
+	digest := hex.EncodeToString(dataDigest.Sum(nil))
+
+	fileContent, err := ioutil.ReadFile(filepath.Join(destDir, "digest.txt"))
+	if err != nil {
+		return false, err
+	}
+	text := string(fileContent)
+	actualDigest := getFieldFromLine(text, ":")
+
+	if digest == actualDigest {
+		return true, nil
+	} else {
+		return false, nil
+	}
+}
+
+
+func VerifySignatures(destDir string) (*x509.Certificate, bool, error) {
+	// Step 1: Extract signature and convert to binary
+	signatureFilePath := filepath.Join(destDir, "signature.txt")
+	signatureBytes, err := extractAndConvertToBinary(signatureFilePath)
+	if err != nil {
+		return nil, false, fmt.Errorf("Failed to decode signature hex: %v", err)
+	}
+
+	// Step 2: Extract digest and convert to binary 
+	digestFilePath := filepath.Join(destDir, "digest.txt")
+	digestBytes, err := extractAndConvertToBinary(digestFilePath)
+	if err != nil {
+		return nil, false, fmt.Errorf("Failed to decode digest hex: %v", err)
+	}
+
+	// Step 3: Extract public key
+	certPath := filepath.Join(destDir, "cert.pem")
+	certBytes, err := ioutil.ReadFile(certPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("Failed to read cert.pem: %v", err)
+	}
+	block, _ := pem.Decode(certBytes)
+	if block == nil {
+		return nil, false, fmt.Errorf("Failed to decode certificate PEM")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, false, fmt.Errorf("Failed to parse certificate: %v", err)
+	}
+	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, false, fmt.Errorf("Failed to parse ECDSA public key")
+	}
+
+	return cert, ecdsa.VerifyASN1(pubKey, digestBytes, signatureBytes), nil
+}
+
+
+func DownloadRootCert(rootCertPath string) error {
+	file, err := os.Create(rootCertPath)
+	if err != nil {
+		return fmt.Errorf("Failed to create file: %v", err)
+	}
+	defer file.Close()
+
+	// Send a GET request to the URL
+	url := "https://privateca-content-6333d504-0000-2df7-afd6-30fd38154590.storage.googleapis.com/a2c725a592f1d586f1f8/ca.crt"
+	response, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("Failed to download: %v", err)
+	}
+	defer response.Body.Close()
+
+	// Check the response status code
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("Failed to download: recieved status code %d", response.StatusCode)
+	}
+
+	// Copy the response body to the file
+	_, err = io.Copy(file, response.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+
+func VerifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificate) ([][]*x509.Certificate, bool, error) {
+	rootBytes, err := ioutil.ReadFile(rootCertPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("Failed to read CA file: %v", err)
+	}
+
+	chainBytes, err := ioutil.ReadFile(certChainPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("Failed to read certificate chain file: %v", err)
+	}
+
+	// Create a certificate pool and add the CA certificate to it
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(rootBytes)
+
+	// Create a certificate verifier with the pool and intermediate certificates
+	verifier := x509.VerifyOptions{
+		Roots:         pool,
+		Intermediates: x509.NewCertPool(),
+	}
+
+	// Add the intermediate certificates to the verifier
+	verifier.Intermediates.AppendCertsFromPEM(chainBytes)
+
+	chains, err := cert.Verify(verifier)
+	if err != nil {
+		fmt.Println(err)
+		return nil, false, nil
+	}
+
+	return chains, true, nil
+}
+
+
+func extractAndConvertToBinary(inputFilePath string) ([]byte, error) {
+	hexValue, err := ioutil.ReadFile(inputFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read the input file: %v", err)
+	}
+
+	field := getFieldFromLine(string(hexValue), ":")
+	dataBytes, err := hex.DecodeString(field)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to decode the hex: %v", err)
+	}
+
+	return dataBytes, nil
+}
+
+
+// extract the field value from a line based on the delimiter
+func getFieldFromLine(line, delimiter string) string {
+	fields := strings.Split(line, delimiter)
+	if len(fields) > 1 {
+		return strings.TrimSpace(fields[1])
+	}
+	return ""
 }
