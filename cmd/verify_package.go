@@ -25,6 +25,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"io/ioutil"
 )
 
 
@@ -46,11 +48,12 @@ func init() {
 	verifyPackageCmd.Flags().StringP("language", "l", "", "Language")
 	verifyPackageCmd.Flags().StringP("package_id", "i", "", "Package ID")
 	verifyPackageCmd.Flags().StringP("version", "v", "", "Version")
-	verifyPackageCmd.Flags().StringP("data_file_path", "p", "", "Data file path")
+	verifyPackageCmd.Flags().StringP("artifact_path", "p", "", "Data file path")
 	verifyPackageCmd.Flags().StringP("temp_downloads_path", "d", "", "temp downloads directory path")
 
 	verifyPackageCmd.Flags().Bool("verify_build_provenance", false, "Verify build provenance")
 	verifyPackageCmd.Flags().String("service_account_key_file_path", "", "Path to the service account key file")
+	verifyPackageCmd.Flags().Bool("disable_certificate_verification", false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
 }
 
 
@@ -64,14 +67,16 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 
     packageID, _ := cmd.Flags().GetString("package_id")
     version, _ := cmd.Flags().GetString("version")
-    dataFilePath, _ := cmd.Flags().GetString("data_file_path")
+    artifactPath, _ := cmd.Flags().GetString("artifact_path")
+
 	// Check if the package exists
-	if _, err := os.Stat(dataFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("package not found at %s", dataFilePath)
+	if _, err := os.Stat(artifactPath); os.IsNotExist(err) {
+		return fmt.Errorf("package not found at %s", artifactPath)
 	}
 
-    // verifyBuildProvenance, _ := cmd.Flags().GetBool("verify_build_provenance")
-    serviceAccountKeyFilePath, _ = cmd.Flags().GetString("service_account_key_file_path")
+    verifyBuildProvenance, _ := cmd.Flags().GetBool("verify_build_provenance")
+    serviceAccountKeyFilePath, _ := cmd.Flags().GetString("service_account_key_file_path")
+	disableCertificateVerification, _ := cmd.Flags().GetBool("disable_certificate_verification")
 
 	// if the user didn't use the --service_account_key_file flag
 	if serviceAccountKeyFilePath == "" {
@@ -93,10 +98,10 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("service account key file must be in JSON format\nUse set-config to update")
 	}
 
-	// make downloads, downloads/package_signatures
+	// Create temporary downloads directory
 	downloadsDir, _ := cmd.Flags().GetString("temp_downloads_path")
 	if downloadsDir == "" {
-		downloadsDir = "temp_downloads"
+		downloadsDir = "tmp_downloads"
 	}
 	if _, err := os.Stat(downloadsDir); os.IsNotExist(err) {
 		if err := os.Mkdir(downloadsDir, os.ModePerm); err != nil {
@@ -110,7 +115,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
         return fmt.Errorf("%v", err)
     }
 
-	// authenticate to gcloud storage and download metadata
+	// Authenticate to GCS and download metadata
 	bucketName := "cloud-aoss-metadata"
 	objectName := fmt.Sprintf("%s/%s/%s/buildinfo.zip", language, packageID, version)
 	zipFilePath := filepath.Join(destDir, "buildinfo.zip")
@@ -122,13 +127,12 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 	}
 
 	jsonfile := filepath.Join(destDir, "buildInfo.json")
-	key := "sbom"
-	sigURL, err := getSigURL(jsonfile, key)
+	sigURL, cryptokey, buildProvSig, err := parseBuildInfoJSON(jsonfile)
 	if err != nil {
 		return fmt.Errorf("%v", err)
 	}
 
-	// authenticate to gcloud storage and download package signature
+	// Authenticate to GCS and download package signature
 	bucketName, objectName, err = extractBucketAndObject(sigURL)
 	if err != nil {
 		return fmt.Errorf("%v", err)
@@ -146,22 +150,43 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%v", err)
 	}
 
+	cert, err := parseCertificate(destDir)
+	if err != nil {
+		return fmt.Errorf("%v", err)
+	}
+
+	if !disableCertificateVerification {
+		// Download root certificate
+		rootCertPath := filepath.Join(destDir, "ca.crt")
+		if err := downloadRootCert(rootCertPath); err == nil {
+			fmt.Printf("File downloaded at %s\n", rootCertPath)
+		} else {
+			return fmt.Errorf("%v", err)
+		}
+		
+		// Verify the leaf certificate with the cert chain and the root certificate
+		certChainPath := filepath.Join(destDir, "certChain.pem")
+		if ok, err := verifyCertificate(rootCertPath, certChainPath, cert); ok {
+			fmt.Printf("Cerficates verified successfully!\n")
+		} else {
+			fmt.Printf("Unsuccessfufl Certificate Verification\n")
+			if err != nil {
+				return fmt.Errorf("%v", err)
+			}
+		}
+	}
+
 	// verify data integrity
-	ok, err := verifyDigest(dataFilePath, destDir)
-	if ok {
-		fmt.Println("Digest Verified successfully!")
-	} else {
-		fmt.Println("Unsuccessful Digest Verification")
+	ok, err := verifyDigest(artifactPath, destDir)
+	if !ok {
+		fmt.Println("Incorrect Digest")
 		if err != nil {
 			return fmt.Errorf("%v", err)
 		}
 	}
 
 	// verify authenticity
-	// that this digest is actually from the intended sender
-	// checks whether the provided signature is valid for the given digest using the public key extracted from cert.pem
-	// if successful, the data has not been tampered with and was signed by the corresponding private key.
-	cert, ok, err := verifySignatures(destDir)
+	ok, err = verifySignatures(destDir, cert)
 	if ok {
 		fmt.Println("Signature Verified successfully!")
 	} else {
@@ -171,24 +196,29 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// download root certificate
-	rootCertPath := filepath.Join(destDir, "ca.crt")
-	if err := downloadRootCert(rootCertPath); err == nil {
-		fmt.Printf("File downloaded at %s\n", rootCertPath)
-	} else {
-		return fmt.Errorf("%v", err)
-	}
-	
-	// verify the leaf certificate with the cert chain and the root certificate
-	certChainPath := filepath.Join(destDir, "certChain.pem")
-	if ok, err := verifyCertificate(rootCertPath, certChainPath, cert); ok {
-		fmt.Printf("Cerficates verified successfully!\n")
-	} else {
-		fmt.Printf("Unsuccessfufl Certificate Verification\n")
+	// Verify build provenance
+	if verifyBuildProvenance {
+		// Download build provenance public key
+		objectName = fmt.Sprintf("keys/%s-public.pem", cryptokey) 
+		publicKeyPath := filepath.Join(destDir, "public.pem")
+		buildProvSigPath := filepath.Join(destDir, "signature.sig")
+		if err := downloadFromGCS(serviceAccountKeyFilePath, bucketName, objectName, publicKeyPath); err != nil {
+			return fmt.Errorf("%v", err)
+		}
+
+		if err := ioutil.WriteFile(buildProvSigPath, buildProvSig, 0644); err != nil {
+			return fmt.Errorf("%v", err)
+		}
+
+		_, stderror, _, err := verifyBuildProv(publicKeyPath, buildProvSigPath, artifactPath)
 		if err != nil {
 			return fmt.Errorf("%v", err)
 		}
-	}
 
+		if length := len(stderror); stderror[ length - 3 : length - 1] == "OK" {
+			fmt.Println("Build Provenance verified successfully!")
+		}
+	}
+	
 	return nil
 }
