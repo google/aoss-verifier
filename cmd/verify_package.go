@@ -179,10 +179,10 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 	// verify data integrity
 	ok, err := verifyDigest(artifactPath, destDir)
 	if !ok {
-		fmt.Println("Incorrect Digest")
 		if err != nil {
 			return fmt.Errorf("%v", err)
 		}
+		return fmt.Errorf("Incorrect Digest")
 	}
 
 	// verify authenticity
@@ -217,6 +217,8 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 
 		if length := len(stderror); stderror[ length - 3 : length - 1] == "OK" {
 			fmt.Println("Build Provenance verified successfully!")
+		} else {
+			fmt.Println("Unsuccessful verification of build provenance")
 		}
 	}
 	

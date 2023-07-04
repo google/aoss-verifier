@@ -160,9 +160,13 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
 
 	// get url of the signature zip of the package
 	var sigURL string
-	for _, val := range sbomData.Packages[0].ExternalRefs {
-		if val.ReferenceCategory == "OTHER" {
-			sigURL = val.ReferenceLocator
+	for _, element := range sbomData.Packages {
+		if strings.HasPrefix(element.Spdxid, "SPDXRef-Package") {
+			for _, val := range element.ExternalRefs {
+				if val.ReferenceCategory == "OTHER" {
+					sigURL = val.ReferenceLocator
+				}
+			}
 		}
 	}
 
@@ -211,9 +215,9 @@ func extractBucketAndObject(url string) (bucketName, objectName string, err erro
 }
 
 
-func verifyDigest(dataFilePath, destDir string) (ok bool, err error) {
+func verifyDigest(artifactPath, destDir string) (ok bool, err error) {
 	// generate sha256 hash
-	packageFile, err := os.Open(dataFilePath)
+	packageFile, err := os.Open(artifactPath)
 	if err != nil {
 		return false, err
 	}
