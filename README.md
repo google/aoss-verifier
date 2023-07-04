@@ -16,16 +16,16 @@ Before using this tool, make sure you have the following in place:
 To install this tool, follow these steps:
 - Clone this repository and install aoss-verifier tool
 ```command
-git clone https://github.com/google/aoss-verifier.git
-cd aoss-verifier
-go mod download
-go install aoss-verifier
+$ git clone https://github.com/google/aoss-verifier.git
+$ cd aoss-verifier
+$ go mod download
+$ go install aoss-verifier
 ```
 This will compile the tool and install it to `$(go env GOPATH)/bin`
 
 - Users are advised to add GOPATH to their environment PATH variable for seamless usage
 ```command
-export PATH="$(go env GOPATH)/bin:$PATH"
+$ export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
 
@@ -41,16 +41,11 @@ To learn more about aoss-verifier usages, run `aoss-verifier help`.
 ### Set configuration
 
 ```command
-aoss-verifier set-config KEY_FILE_PATH
+$ aoss-verifier set-config KEY_FILE_PATH
 ```
 > where KEY_FILE_PATH is the path to the service account key json file
 
 This will create a hidden config file in the home directory which contains the path to the service account key file that will be used to authenticate to Google Cloud services.
-
-```nginx
-[label ~/.aoss-verifier.yaml]
-service_account_key_file: KEY_FILE_PATH
-```
 
 
 ### Verify package
@@ -58,7 +53,7 @@ service_account_key_file: KEY_FILE_PATH
 To verify a package, you’ll need to pass in the language, package id, version and the path of the artifact you’re trying to verify via the `--language`, `--package_id`, `--version` and `--artifact_path` flags.
 
 ```command
-aoss-verifier verify-package --language LANGUAGE --package_id PACKAGE_ID --version VERSION --artifact_path ARTIFACT_PATH [flags]
+$ aoss-verifier verify-package --language LANGUAGE --package_id PACKAGE_ID --version VERSION --artifact_path ARTIFACT_PATH [flags]
 ```
 
 > where
@@ -79,7 +74,7 @@ aoss-verifier verify-package --language LANGUAGE --package_id PACKAGE_ID --versi
 #### Example
 
 ```command
-aoss-verifier verify-package --language java --package_id commons-codec:commons-codec --version 1.15 --artifact_path target/dependency/commons-codec-1.15.jar
+$ aoss-verifier verify-package --language java --package_id commons-codec:commons-codec --version 1.15 --artifact_path target/dependency/commons-codec-1.15.jar
 ```
 
 ```
@@ -95,7 +90,7 @@ Signature Verified successfully!
 
 To additionally verify build provenance, use the `--verify_build_provenance` flag.
 ```command
-aoss-verifier verify-package --language java --package_id commons-codec:commons-codec --version 1.15 --artifact_path target/dependency/commons-codec-1.15.jar --verify_build_provenance
+$ aoss-verifier verify-package --language java --package_id commons-codec:commons-codec --version 1.15 --artifact_path target/dependency/commons-codec-1.15.jar --verify_build_provenance
 ```
 
 ```
@@ -109,7 +104,7 @@ Build Provenance verified successfully!
 ```
 
 
-**Please refer to the help section (use `-h` flag) of the tool for specific instructions on each command, including available options and their usage.**
+*Please refer to the help section (use `-h` flag) of the tool for specific instructions on each command, including available options and their usage.*
 
 
 ### FAQs
