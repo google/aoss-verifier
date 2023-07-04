@@ -20,17 +20,20 @@ import (
 	"os"
 	"io"
 	"io/ioutil"
-	"log"
 	"path/filepath"
 	"archive/zip"
 	"encoding/json"
 	"strings"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/base64"
 	"crypto/x509"
 	"crypto/ecdsa"
 	"encoding/pem"
 	"net/http"
+	"os/exec"
+	"bytes"
+	"errors"
 
 	"google.golang.org/api/option"
 	"cloud.google.com/go/storage"
@@ -45,11 +48,6 @@ func downloadFromGCS(serviceAccountKeyFilePath string, bucketName string, object
 	client, err := storage.NewClient(ctx, option.WithCredentialsFile(serviceAccountKeyFilePath))
 	if err != nil {
 		return fmt.Errorf("Failed to authenticate to GCS: %v", err)
-	}
-
-	// Remove the existing file if it exists
-	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("Failed to remove existing file: %v", err)
 	}
 
 	reader, err := client.Bucket(bucketName).Object(objectName).NewReader(ctx)
@@ -87,11 +85,6 @@ func unzipFile(zipFile, destDir string) error {
 	for _, file := range reader.File {
 		filePath := filepath.Join(destDir, file.Name)
 
-		// Remove the existing file if it exists
-		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("Failed to remove existing file: %v", err)
-		}
-
 		writer, err := os.Create(filePath)
 		if err != nil {
 			return fmt.Errorf("failed to create file: %v", err)
@@ -113,24 +106,22 @@ func unzipFile(zipFile, destDir string) error {
 		reader.Close()
 	}
 
-	fmt.Println("File unzipped")
-
 	return nil
 }
 
 
 type sbom struct {
-	Packages          []struct {
-		Spdxid    string `json:"SPDXID"`
-		Checksums []struct {
-			Algorithm     string `json:"algorithm"`
-			ChecksumValue string `json:"checksumValue"`
+	Packages []struct {
+		Spdxid                string `json:"SPDXID"`
+		Checksums             []struct {
+			Algorithm        	string `json:"algorithm"`
+			ChecksumValue    	string `json:"checksumValue"`
 		} `json:"checksums"`
-		DownloadLocation string `json:"downloadLocation"`
-		ExternalRefs     []struct {
-			ReferenceCategory string `json:"referenceCategory"`
-			ReferenceLocator  string `json:"referenceLocator"`
-			ReferenceType     string `json:"referenceType"`
+		DownloadLocation      string `json:"downloadLocation"`
+		ExternalRefs     	  []struct {
+			ReferenceCategory	string `json:"referenceCategory"`
+			ReferenceLocator  	string `json:"referenceLocator"`
+			ReferenceType     	string `json:"referenceType"`
 		} `json:"externalRefs"`
 		FilesAnalyzed         bool   `json:"filesAnalyzed"`
 		Name                  string `json:"name"`
@@ -143,11 +134,11 @@ type sbom struct {
 }
 
 
-func getSigURL(jsonFile string, key string) (string, error) {
+func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildProvSignature []byte, err error) {
 	// Read the JSON file
 	data, err := ioutil.ReadFile(jsonFile)
 	if err != nil {
-		return "", fmt.Errorf("Failed to read JSON file: %v", err)
+		return "", "", nil, fmt.Errorf("Failed to read JSON file: %v", err)
 	}
 
 	// Create a map to hold the JSON data
@@ -155,17 +146,19 @@ func getSigURL(jsonFile string, key string) (string, error) {
 
 	// Unmarshal the JSON data into the map
 	if err := json.Unmarshal(data, &jsonData); err != nil {
-		return "", fmt.Errorf("Failed to unmarshal JSON data: %v", err)
+		return "", "", nil, fmt.Errorf("Failed to unmarshal JSON data: %v", err)
 	}
 
 	// Access the value of the "sbom" key
-	sbomValue := jsonData["sbom"].(string)
+	key := "sbom"
+	sbomValue := jsonData[key].(string)
 
 	var sbomData *sbom
 	if err = json.Unmarshal([]byte(sbomValue), &sbomData); err != nil {
-		log.Fatalf("Failed to unmarshal 'sbom' data: %v", err)
+		return "", "", nil, fmt.Errorf("Failed to unmarshal 'sbom' data: %v", err)
 	}
 
+	// get url of the signature zip of the package
 	var sigURL string
 	for _, val := range sbomData.Packages[0].ExternalRefs {
 		if val.ReferenceCategory == "OTHER" {
@@ -173,7 +166,34 @@ func getSigURL(jsonFile string, key string) (string, error) {
 		}
 	}
 
-	return  sigURL, nil
+	// get signature, key for build provenance
+	var cryptokey string
+	var buildProvSig []byte
+	buildDetailsArray := jsonData["buildDetails"].([] interface{})
+	for _, element := range buildDetailsArray {
+		buildDetailsData := element.(map[string]interface{})
+		envelopeData := buildDetailsData["envelope"].(map[string]interface{})
+		sigData := envelopeData["signatures"].([] interface{})
+		for _, item := range sigData {
+			sigDataMap := item.(map[string]interface{})
+			for label, value := range sigDataMap {
+				if label == "keyid" {
+					cryptokey = strings.TrimPrefix(value.(string), "gcpkms://")
+					fields := strings.Split(cryptokey, "/")
+					for index, str := range fields {
+						if str == "cryptoKeys" {
+							cryptokey = fields[index + 1]
+							break
+						}
+					}
+				} else {
+					buildProvSig, err = base64.StdEncoding.DecodeString(value.(string))
+				}
+			}
+		}
+	}
+
+	return  sigURL, cryptokey, buildProvSig, nil
 }
 
 
@@ -191,7 +211,7 @@ func extractBucketAndObject(url string) (bucketName, objectName string, err erro
 }
 
 
-func verifyDigest(dataFilePath, destDir string) (bool, error) {
+func verifyDigest(dataFilePath, destDir string) (ok bool, err error) {
 	// generate sha256 hash
 	packageFile, err := os.Open(dataFilePath)
 	if err != nil {
@@ -221,41 +241,47 @@ func verifyDigest(dataFilePath, destDir string) (bool, error) {
 }
 
 
-func verifySignatures(destDir string) (*x509.Certificate, bool, error) {
-	// Step 1: Extract signature and convert to binary
+func verifySignatures(destDir string, cert *x509.Certificate) (ok bool, err error) {
+	// Extract signature and convert to binary
 	signatureFilePath := filepath.Join(destDir, "signature.txt")
 	signatureBytes, err := extractAndConvertToBinary(signatureFilePath)
 	if err != nil {
-		return nil, false, fmt.Errorf("Failed to decode signature hex: %v", err)
+		return false, fmt.Errorf("Failed to decode signature hex: %v", err)
 	}
 
-	// Step 2: Extract digest and convert to binary 
+	// Extract digest and convert to binary 
 	digestFilePath := filepath.Join(destDir, "digest.txt")
 	digestBytes, err := extractAndConvertToBinary(digestFilePath)
 	if err != nil {
-		return nil, false, fmt.Errorf("Failed to decode digest hex: %v", err)
+		return false, fmt.Errorf("Failed to decode digest hex: %v", err)
 	}
 
-	// Step 3: Extract public key
+	// Extract public key
+	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return false, fmt.Errorf("Failed to parse ECDSA public key")
+	}
+
+	return ecdsa.VerifyASN1(pubKey, digestBytes, signatureBytes), nil
+}
+
+
+func parseCertificate(destDir string) (certificate *x509.Certificate, err error) {
 	certPath := filepath.Join(destDir, "cert.pem")
 	certBytes, err := ioutil.ReadFile(certPath)
 	if err != nil {
-		return nil, false, fmt.Errorf("Failed to read cert.pem: %v", err)
+		return nil, fmt.Errorf("Failed to read cert.pem: %v", err)
 	}
 	block, _ := pem.Decode(certBytes)
 	if block == nil {
-		return nil, false, fmt.Errorf("Failed to decode certificate PEM")
+		return nil, fmt.Errorf("Failed to decode certificate PEM")
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, false, fmt.Errorf("Failed to parse certificate: %v", err)
-	}
-	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, false, fmt.Errorf("Failed to parse ECDSA public key")
+		return nil, fmt.Errorf("Failed to parse certificate: %v", err)
 	}
 
-	return cert, ecdsa.VerifyASN1(pubKey, digestBytes, signatureBytes), nil
+	return cert, nil
 }
 
 
@@ -289,7 +315,7 @@ func downloadRootCert(rootCertPath string) error {
 }
 
 
-func verifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificate) (bool, error) {
+func verifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificate) (ok bool, err error) {
 	rootBytes, err := ioutil.ReadFile(rootCertPath)
 	if err != nil {
 		return false, fmt.Errorf("Failed to read CA file: %v", err)
@@ -322,7 +348,33 @@ func verifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificat
 }
 
 
-func extractAndConvertToBinary(inputFilePath string) ([]byte, error) {
+func verifyBuildProv(publicKeyPath, buildProvSigPath, artifactPath string) (stdoutput, stderror string, exitCode int, err error) {
+	var stdout, stderr bytes.Buffer
+	cosignCmd := exec.Command("cosign", "verify-blob-attestation",
+		"--insecure-ignore-tlog",
+		"--key", publicKeyPath,
+		"--signature", buildProvSigPath,
+		"--type", "slsaprovenance",
+		"--check-claims=true",
+		artifactPath,
+	)
+
+	cosignCmd.Stdout = &stdout
+	cosignCmd.Stderr = &stderr
+
+	err = cosignCmd.Run()
+
+	exitCode = 0
+	var exitError *exec.ExitError
+	if errors.As(err, &exitError) {
+		exitCode = exitError.ExitCode()
+	}
+
+	return stdout.String(), stderr.String(), exitCode, err
+}
+
+
+func extractAndConvertToBinary(inputFilePath string) (Bytes []byte, err error) {
 	hexValue, err := ioutil.ReadFile(inputFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read the input file: %v", err)

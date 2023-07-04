@@ -29,7 +29,6 @@ import (
 
 var (
 	configFilePath string
-	serviceAccountKeyFilePath string
 	homeDir string
 	
 	setConfigCmd = &cobra.Command{
@@ -66,7 +65,7 @@ func init() {
 
 
 func setConfig(cmd *cobra.Command, args []string) error {
-	// if no argument is passed
+	// Check if the service account key file path is provided
 	if len(args) == 0 {
 		return fmt.Errorf("Please specify the service account key file path")
 	}
@@ -76,18 +75,18 @@ func setConfig(cmd *cobra.Command, args []string) error {
 	}
 
 	// if config file exists already, os.Create will truncate and update
-	f, err := os.Create(configFilePath)
+	file, err := os.Create(configFilePath)
     if err != nil {
         log.Fatal(err)
     }
-    defer f.Close()
+    defer file.Close()
 
-	// path is relative to the current directory
-	w := bufio.NewWriter(f)
-	if _, err = fmt.Fprintf(w, "service_account_key_file: %v", args[0]); err != nil {
+	// Write the service account key file path to the config file
+	writer := bufio.NewWriter(file)
+	if _, err = fmt.Fprintf(writer, "service_account_key_file: %v", args[0]); err != nil {
 		log.Fatal(err)
 	}
-	w.Flush()
+	writer.Flush()
 
 	fmt.Println("aoss-verifier config updated successfully")
 
