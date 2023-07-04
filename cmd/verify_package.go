@@ -167,7 +167,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		// Verify the leaf certificate with the cert chain and the root certificate
 		certChainPath := filepath.Join(destDir, "certChain.pem")
 		if ok, err := verifyCertificate(rootCertPath, certChainPath, cert); ok {
-			fmt.Printf("Cerficates verified successfully!\n")
+			fmt.Printf("Certificates verified successfully!\n")
 		} else {
 			fmt.Printf("Unsuccessfufl Certificate Verification\n")
 			if err != nil {
