@@ -105,6 +105,3 @@ Build Provenance verified successfully!
 
 
 *Please refer to the help section (use `-h` flag) of the tool for specific instructions on each command, including available options and their usage.*
-
-
-### FAQs
