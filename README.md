@@ -50,7 +50,7 @@ This will create a hidden config file in the home directory which contains the p
 
 ### Verify package
 
-To verify a package, you’ll need to pass in the language, package id, version and the path of the artifact you’re trying to verify via the `--language`, `--package_id`, `--version` and `--artifact_path` flags.
+To verify a package, you’ll need to pass the language, package id, version and the path of the artifact you’re trying to verify via the `--language`, `--package_id`, `--version` and `--artifact_path` flags.
 
 ```command
 $ aoss-verifier verify-package --language LANGUAGE --package_id PACKAGE_ID --version VERSION --artifact_path ARTIFACT_PATH [flags]
@@ -101,6 +101,40 @@ Cerficates verified successfully!
 Signature Verified successfully!
 File downloaded at tmp_downloads/commons-codec:commons-codec-1.15-2023_07_04_09:08:08/package_signatures/public.pem
 Build Provenance verified successfully!
+```
+
+
+### Verify metadata
+
+To verify metadata, you'll need to pass the metadata type, language, package id and the version of the package for which it is desired to verify the metadata via the `--metadata_type`, `--language`, `--package_id` and `--version` flags.
+
+```command
+$ aoss-verifier verify-metadata --metadata_type TYPE --language LANGUAGE --package_id PACKAGE_ID --version VERSION [flags]
+```
+
+> where
+>
+> TYPE: buildinfo/vexinfo/healthinfo
+> 
+> LANGUAGE: programming language of the package; must be in lowercase
+> 
+> PACKAGE_ID:
+> - for java groupid:artifactid
+> - for python package_name
+> 
+> VERSION: version of the package
+
+#### Example
+
+```command
+$ aoss-verifier verify-metadata --metadata_type vexinfo --language java --package_id commons-codec:commons-codec --version 1.15
+```
+
+```
+File downloaded at tmp_downloads/commons-codec:commons-codec-1.15-2023_07_06_11:21:28/vexinfo.zip
+File downloaded at tmp_downloads/commons-codec:commons-codec-1.15-2023_07_06_11:21:28/ca.crt
+Certificates verified successfully!
+Metadata Signature Verified successfully!
 ```
 
 
