@@ -54,6 +54,7 @@ func init() {
 	verifyPackageCmd.Flags().Bool("verify_build_provenance", false, "Verify build provenance")
 	verifyPackageCmd.Flags().String("service_account_key_file_path", "", "Path to the service account key file")
 	verifyPackageCmd.Flags().Bool("disable_certificate_verification", false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
+	verifyPackageCmd.Flags().Bool("disable_deletes", false, "Disable deleting the downloaded files")
 }
 
 
@@ -77,6 +78,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
     verifyBuildProvenance, _ := cmd.Flags().GetBool("verify_build_provenance")
     serviceAccountKeyFilePath, _ := cmd.Flags().GetString("service_account_key_file_path")
 	disableCertificateVerification, _ := cmd.Flags().GetBool("disable_certificate_verification")
+	disableDeletes, _ := cmd.Flags().GetBool("disable_deletes")
 
 	// if the user didn't use the --service_account_key_file flag
 	if serviceAccountKeyFilePath == "" {
@@ -155,6 +157,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%v", err)
 	}
 
+	// verify certificates
 	if !disableCertificateVerification {
 		// Download root certificate
 		rootCertPath := filepath.Join(destDir, "ca.crt")
@@ -219,6 +222,13 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 			fmt.Println("Build Provenance verified successfully!")
 		} else {
 			fmt.Println("Unsuccessful verification of build provenance")
+		}
+	}
+
+	if !disableDeletes {
+		destDir = strings.TrimSuffix(destDir, "/package_signatures")
+		if err := os.RemoveAll(destDir); err != nil {
+			return fmt.Errorf("%v", err)
 		}
 	}
 	
