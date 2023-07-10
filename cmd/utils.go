@@ -40,8 +40,35 @@ import (
 )
 
 
+/*
+	'sbom' key in the buildInfo.json contains package information
+	will be used to extract the signature zip URL
+*/
+type sbom struct {
+	Packages []struct {
+		Spdxid                string `json:"SPDXID"`
+		Checksums             []struct {
+			Algorithm        	string `json:"algorithm"`
+			ChecksumValue    	string `json:"checksumValue"`
+		} `json:"checksums"`
+		DownloadLocation      string `json:"downloadLocation"`
+		ExternalRefs     	  []struct {
+			ReferenceCategory	string `json:"referenceCategory"`
+			ReferenceLocator  	string `json:"referenceLocator"`
+			ReferenceType     	string `json:"referenceType"`
+		} `json:"externalRefs"`
+		FilesAnalyzed         bool   `json:"filesAnalyzed"`
+		Name                  string `json:"name"`
+		PackageFileName       string `json:"packageFileName"`
+		PrimaryPackagePurpose string `json:"primaryPackagePurpose"`
+		SourceInfo            string `json:"sourceInfo,omitempty"`
+		Supplier              string `json:"supplier"`
+		VersionInfo           string `json:"versionInfo"`
+	} `json:"packages"`
+}
+
+
 func downloadFromGCS(serviceAccountKeyFilePath string, bucketName string, objectName string, filePath string) error {
-	// Create a context
 	ctx := context.Background()
 
 	// Authenticate using the service account key file
@@ -84,53 +111,33 @@ func unzipFile(zipFile, destDir string) error {
 
 	for _, file := range reader.File {
 		filePath := filepath.Join(destDir, file.Name)
-
-		writer, err := os.Create(filePath)
-		if err != nil {
-			return fmt.Errorf("failed to create file: %v", err)
+		if err := copyContent(filePath, file); err != nil {
+			return fmt.Errorf("%v", err)
 		}
-
-		reader, err := file.Open()
-		if err != nil {
-			writer.Close()
-			return fmt.Errorf("failed to open file inside zip: %v", err)
-		}
-
-		if _, err = io.Copy(writer, reader); err != nil {
-			writer.Close()
-			reader.Close()
-			return fmt.Errorf("failed to extract file from zip: %v", err)
-		}
-
-		writer.Close()
-		reader.Close()
 	}
 
 	return nil
 }
 
 
-type sbom struct {
-	Packages []struct {
-		Spdxid                string `json:"SPDXID"`
-		Checksums             []struct {
-			Algorithm        	string `json:"algorithm"`
-			ChecksumValue    	string `json:"checksumValue"`
-		} `json:"checksums"`
-		DownloadLocation      string `json:"downloadLocation"`
-		ExternalRefs     	  []struct {
-			ReferenceCategory	string `json:"referenceCategory"`
-			ReferenceLocator  	string `json:"referenceLocator"`
-			ReferenceType     	string `json:"referenceType"`
-		} `json:"externalRefs"`
-		FilesAnalyzed         bool   `json:"filesAnalyzed"`
-		Name                  string `json:"name"`
-		PackageFileName       string `json:"packageFileName"`
-		PrimaryPackagePurpose string `json:"primaryPackagePurpose"`
-		SourceInfo            string `json:"sourceInfo,omitempty"`
-		Supplier              string `json:"supplier"`
-		VersionInfo           string `json:"versionInfo"`
-	} `json:"packages"`
+func copyContent(filePath string, file *zip.File) error {
+	writer, err := os.Create(filePath)
+	defer writer.Close()
+	if err != nil {
+		return fmt.Errorf("failed to create file: %v", err)
+	}
+
+	reader, err := file.Open()
+	defer reader.Close()
+	if err != nil {
+		return fmt.Errorf("failed to open file inside zip: %v", err)
+	}
+
+	if _, err = io.Copy(writer, reader); err != nil {
+		return fmt.Errorf("failed to extract file from zip: %v", err)
+	}
+
+	return nil
 }
 
 
@@ -171,9 +178,14 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
 	}
 
 	// get signature, key for build provenance
-	var cryptokey string
-	var buildProvSig []byte
 	buildDetailsArray := jsonData["buildDetails"].([] interface{})
+	cryptokey, buildProvSig, err := getCryptokeyAndBuildProvSig(buildDetailsArray)
+	
+	return  sigURL, cryptokey, buildProvSig, nil
+}
+
+
+func getCryptokeyAndBuildProvSig(buildDetailsArray []interface{}) (cryptokey string, buildProvSig []byte, err error) {
 	for _, element := range buildDetailsArray {
 		buildDetailsData := element.(map[string]interface{})
 		envelopeData := buildDetailsData["envelope"].(map[string]interface{})
@@ -197,7 +209,7 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
 		}
 	}
 
-	return  sigURL, cryptokey, buildProvSig, nil
+	return cryptokey, buildProvSig, nil
 }
 
 

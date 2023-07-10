@@ -27,8 +27,13 @@ import (
 )
 
 
+const (
+	configName = ".aoss-verifier"
+	configType = "yaml"
+)
+
+
 var (
-	configFilePath string
 	homeDir string
 	
 	setConfigCmd = &cobra.Command{
@@ -55,12 +60,9 @@ func init() {
 	homeDir = usr.HomeDir
 
 	// Set the configuration file name and location
-	viper.SetConfigName(".aoss-verifier")
-	viper.SetConfigType("yaml")
+	viper.SetConfigName(configName)
+	viper.SetConfigType(configType)
 	viper.AddConfigPath(homeDir)
-
-	// Set the config file path to the user's home directory
-	configFilePath = filepath.Join(homeDir, ".aoss-verifier.yaml")
 }
 
 
@@ -70,21 +72,18 @@ func setConfig(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Please specify the service account key file path")
 	}
 
-	if len(args) != 1 {
-		return fmt.Errorf("Incorrect usage")
-	}
-
+	configFilePath := filepath.Join(homeDir, ".aoss-verifier.yaml")
 	// if config file exists already, os.Create will truncate and update
 	file, err := os.Create(configFilePath)
+	defer file.Close()
     if err != nil {
-        log.Fatal(err)
+		return fmt.Errorf("%v", err)
     }
-    defer file.Close()
 
 	// Write the service account key file path to the config file
 	writer := bufio.NewWriter(file)
 	if _, err = fmt.Fprintf(writer, "service_account_key_file: %v", args[0]); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("%v", err)
 	}
 	writer.Flush()
 

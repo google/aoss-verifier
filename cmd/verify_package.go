@@ -22,11 +22,24 @@ import (
 	"unicode"
 	"path/filepath"
 	"time"
+	"io/ioutil"
+	// "bufio"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+)
 
-	"io/ioutil"
+
+const (
+	languageFlagName = "language"
+	packageIdFlagName = "package_id"
+	versionFlagName = "version"
+	artifactPathFlagName = "artifact_path"
+	tempDownloadsPathFlagName = "temp_downloads_path"
+	verifyBuildProvenanceFlagName = "verify_build_provenance"
+	serviceAccountKeyFilePathFlagName = "service_account_key_file_path"
+	disableCertificateVerificationFlagName = "disable_certificate_verification"
+	disableDeletesFlagName = "disable_deletes"
 )
 
 
@@ -45,40 +58,40 @@ var verifyPackageCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(verifyPackageCmd)
 
-	verifyPackageCmd.Flags().StringP("language", "l", "", "Language")
-	verifyPackageCmd.Flags().StringP("package_id", "i", "", "Package ID")
-	verifyPackageCmd.Flags().StringP("version", "v", "", "Version")
-	verifyPackageCmd.Flags().StringP("artifact_path", "p", "", "Data file path")
-	verifyPackageCmd.Flags().StringP("temp_downloads_path", "d", "", "temp downloads directory path")
+	verifyPackageCmd.Flags().StringP(languageFlagName, "l", "", "Language")
+	verifyPackageCmd.Flags().StringP(packageIdFlagName, "i", "", "Package ID")
+	verifyPackageCmd.Flags().StringP(versionFlagName, "v", "", "Version")
+	verifyPackageCmd.Flags().StringP(artifactPathFlagName, "p", "", "Data file path")
+	verifyPackageCmd.Flags().StringP(tempDownloadsPathFlagName, "d", "", "temp downloads directory path")
 
-	verifyPackageCmd.Flags().Bool("verify_build_provenance", false, "Verify build provenance")
-	verifyPackageCmd.Flags().String("service_account_key_file_path", "", "Path to the service account key file")
-	verifyPackageCmd.Flags().Bool("disable_certificate_verification", false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
-	verifyPackageCmd.Flags().Bool("disable_deletes", false, "Disable deleting the downloaded files")
+	verifyPackageCmd.Flags().Bool(verifyBuildProvenanceFlagName, false, "Verify build provenance")
+	verifyPackageCmd.Flags().String(serviceAccountKeyFilePathFlagName, "", "Path to the service account key file")
+	verifyPackageCmd.Flags().Bool(disableCertificateVerificationFlagName, false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
+	verifyPackageCmd.Flags().Bool(disableDeletesFlagName, false, "Disable deleting the downloaded files")
 }
 
 
 func verifyPackage(cmd *cobra.Command, args []string) error {
-    language, _ := cmd.Flags().GetString("language")
+    language, _ := cmd.Flags().GetString(languageFlagName)
 	for _, char := range language {
 		if unicode.IsUpper(char) {
 			return fmt.Errorf("Language must be all lowercase")
 		}
 	}
 
-    packageID, _ := cmd.Flags().GetString("package_id")
-    version, _ := cmd.Flags().GetString("version")
-    artifactPath, _ := cmd.Flags().GetString("artifact_path")
+    packageID, _ := cmd.Flags().GetString(packageIdFlagName)
+    version, _ := cmd.Flags().GetString(versionFlagName)
+    artifactPath, _ := cmd.Flags().GetString(artifactPathFlagName)
 
 	// Check if the package exists
 	if _, err := os.Stat(artifactPath); os.IsNotExist(err) {
 		return fmt.Errorf("package not found at %s", artifactPath)
 	}
 
-    verifyBuildProvenance, _ := cmd.Flags().GetBool("verify_build_provenance")
-    serviceAccountKeyFilePath, _ := cmd.Flags().GetString("service_account_key_file_path")
-	disableCertificateVerification, _ := cmd.Flags().GetBool("disable_certificate_verification")
-	disableDeletes, _ := cmd.Flags().GetBool("disable_deletes")
+    verifyBuildProvenance, _ := cmd.Flags().GetBool(verifyBuildProvenanceFlagName)
+    serviceAccountKeyFilePath, _ := cmd.Flags().GetString(serviceAccountKeyFilePathFlagName)
+	disableCertificateVerification, _ := cmd.Flags().GetBool(disableCertificateVerificationFlagName)
+	disableDeletes, _ := cmd.Flags().GetBool(disableDeletesFlagName)
 
 	// if the user didn't use the --service_account_key_file flag
 	if serviceAccountKeyFilePath == "" {
