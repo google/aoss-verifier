@@ -27,7 +27,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	// disable the default completion command
+	// Disable the default completion command.
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }
 

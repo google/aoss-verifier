@@ -28,6 +28,9 @@ import (
 )
 
 
+const metadataTypeFlagName = "metadata_type"
+
+
 var verifyMetadataCmd = &cobra.Command{
 	Use:   "verify-metadata",
 	Short: "Verify metadata",
@@ -43,39 +46,39 @@ var verifyMetadataCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(verifyMetadataCmd)
 
-	verifyMetadataCmd.Flags().StringP("metadata_type", "t", "", "Metadata Type")
-	verifyMetadataCmd.Flags().StringP("language", "l", "", "Language")
-	verifyMetadataCmd.Flags().StringP("package_id", "i", "", "Package ID")
-	verifyMetadataCmd.Flags().StringP("version", "v", "", "Version")
-	verifyMetadataCmd.Flags().StringP("temp_downloads_path", "d", "", "temp downloads directory path")
-	verifyMetadataCmd.Flags().String("service_account_key_file_path", "", "Path to the service account key file")
-	verifyMetadataCmd.Flags().Bool("disable_certificate_verification", false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
-	verifyMetadataCmd.Flags().Bool("disable_deletes", false, "Disable deleting the downloaded files")
+	verifyMetadataCmd.Flags().StringP(metadataTypeFlagName, "t", "", "Metadata Type")
+	verifyMetadataCmd.Flags().StringP(languageFlagName, "l", "", "Language")
+	verifyMetadataCmd.Flags().StringP(packageIdFlagName, "i", "", "Package ID")
+	verifyMetadataCmd.Flags().StringP(versionFlagName, "v", "", "Version")
+	verifyMetadataCmd.Flags().StringP(tempDownloadsPathFlagName, "d", "", "temp downloads directory path")
+	verifyMetadataCmd.Flags().String(serviceAccountKeyFilePathFlagName, "", "Path to the service account key file")
+	verifyMetadataCmd.Flags().Bool(disableCertificateVerificationFlagName, false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
+	verifyMetadataCmd.Flags().Bool(disableDeletesFlagName, false, "Disable deleting the downloaded files")
 }
 
 
 func verifyMetadata(cmd *cobra.Command, args []string) error {
-	language, _ := cmd.Flags().GetString("language")
+	language, _ := cmd.Flags().GetString(languageFlagName)
 	for _, char := range language {
 		if unicode.IsUpper(char) {
 			return fmt.Errorf("Language must be all lowercase")
 		}
 	}
 
-    packageID, _ := cmd.Flags().GetString("package_id")
-    version, _ := cmd.Flags().GetString("version")
-	disableCertificateVerification, _ := cmd.Flags().GetBool("disable_certificate_verification")
-	disableDeletes, _ := cmd.Flags().GetBool("disable_deletes")
+    packageID, _ := cmd.Flags().GetString(packageIdFlagName)
+    version, _ := cmd.Flags().GetString(versionFlagName)
+	disableCertificateVerification, _ := cmd.Flags().GetBool(disableCertificateVerificationFlagName)
+	disableDeletes, _ := cmd.Flags().GetBool(disableDeletesFlagName)
 
-	metadata_type, _ := cmd.Flags().GetString("metadata_type")
+	metadata_type, _ := cmd.Flags().GetString(metadataTypeFlagName)
 	if metadata_type != "buildinfo" && metadata_type != "vexinfo" && metadata_type != "healthinfo" {
 		return fmt.Errorf("Metadata type should be either of buildinfo, vexinfo, healthinfo")
 	}
 
-    serviceAccountKeyFilePath, _ := cmd.Flags().GetString("service_account_key_file_path")
-	// if the user didn't use the --service_account_key_file flag
+    serviceAccountKeyFilePath, _ := cmd.Flags().GetString(serviceAccountKeyFilePathFlagName)
+	// If the user didn't use the --service_account_key_file flag
 	if serviceAccountKeyFilePath == "" {
-		// Read config file
+		// Read config file.
 		if err := viper.ReadInConfig(); err != nil {
 			return fmt.Errorf("Failed to read config file: %v", err)
 		}
@@ -83,18 +86,18 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 		serviceAccountKeyFilePath = viper.GetString("service_account_key_file")
 	}
 
-	// Check if the service account key file exists
+	// Check if the service account key file exists.
 	if _, err := os.Stat(serviceAccountKeyFilePath); os.IsNotExist(err) {
 		return fmt.Errorf("service account key file not found at %s", serviceAccountKeyFilePath)
 	}
 
-	// Check if the service account key file has a JSON extension
+	// Check if the service account key file has a JSON extension.
 	if !strings.HasSuffix(serviceAccountKeyFilePath, ".json") {
 		return fmt.Errorf("service account key file must be in JSON format\nUse set-config to update")
 	}
 
-	// Create temporary downloads directory
-	downloadsDir, _ := cmd.Flags().GetString("temp_downloads_path")
+	// Create temporary downloads directory.
+	downloadsDir, _ := cmd.Flags().GetString(tempDownloadsPathFlagName)
 	if downloadsDir == "" {
 		downloadsDir = "tmp_downloads"
 	}
@@ -110,7 +113,7 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
         return fmt.Errorf("%v", err)
     }
 
-	// Authenticate to GCS and download metadata
+	// Authenticate to GCS and download metadata.
 	bucketName := "cloud-aoss-metadata"
 	metadata := fmt.Sprintf("%s.zip", metadata_type)
 	objectName := fmt.Sprintf("%s/%s/%s/%s", language, packageID, version, metadata)
@@ -132,19 +135,9 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%v", err)
 	}
 
-	// verify certificates
+	// Verify certificates.
 	if !disableCertificateVerification {
-		// Download root certificate
-		rootCertPath := filepath.Join(destDir, "ca.crt")
-		if err := downloadRootCert(rootCertPath); err == nil {
-			fmt.Printf("File downloaded at %s\n", rootCertPath)
-		} else {
-			return fmt.Errorf("%v", err)
-		}
-		
-		// Verify the leaf certificate with the cert chain and the root certificate
-		certChainPath := filepath.Join(destDir, "certChain.pem")
-		if ok, err := verifyCertificate(rootCertPath, certChainPath, cert); ok {
+		if ok, err := verifyCertificate(destDir, cert); ok {
 			fmt.Printf("Certificates verified successfully!\n")
 		} else {
 			fmt.Printf("Unsuccessfufl Certificate Verification\n")
@@ -156,7 +149,8 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 
 	jsonFile := fmt.Sprintf("%sInfo.json", strings.TrimSuffix(metadata, "info.zip"))
 	metadataPath := filepath.Join(destDir, jsonFile)
-	// verify data integrity
+
+	// Verify data integrity.
 	ok, err := verifyDigest(metadataPath, destDir)
 	if !ok {
 		if err != nil {
@@ -165,7 +159,7 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Incorrect Digest")
 	}
 
-	// verify authenticity
+	// Verify authenticity.
 	ok, err = verifySignatures(destDir, cert)
 	if ok {
 		fmt.Println("Metadata Signature Verified successfully!")

@@ -40,30 +40,15 @@ import (
 )
 
 
-/*
-	'sbom' key in the buildInfo.json contains package information
-	will be used to extract the signature zip URL
-*/
+// The 'sbom' key in the buildInfo.json contains package information
+// from where the signature zip URL is extracted.
 type sbom struct {
 	Packages []struct {
 		Spdxid                string `json:"SPDXID"`
-		Checksums             []struct {
-			Algorithm        	string `json:"algorithm"`
-			ChecksumValue    	string `json:"checksumValue"`
-		} `json:"checksums"`
-		DownloadLocation      string `json:"downloadLocation"`
 		ExternalRefs     	  []struct {
 			ReferenceCategory	string `json:"referenceCategory"`
 			ReferenceLocator  	string `json:"referenceLocator"`
-			ReferenceType     	string `json:"referenceType"`
 		} `json:"externalRefs"`
-		FilesAnalyzed         bool   `json:"filesAnalyzed"`
-		Name                  string `json:"name"`
-		PackageFileName       string `json:"packageFileName"`
-		PrimaryPackagePurpose string `json:"primaryPackagePurpose"`
-		SourceInfo            string `json:"sourceInfo,omitempty"`
-		Supplier              string `json:"supplier"`
-		VersionInfo           string `json:"versionInfo"`
 	} `json:"packages"`
 }
 
@@ -71,7 +56,7 @@ type sbom struct {
 func downloadFromGCS(serviceAccountKeyFilePath string, bucketName string, objectName string, filePath string) error {
 	ctx := context.Background()
 
-	// Authenticate using the service account key file
+	// Authenticate using the service account key file.
 	client, err := storage.NewClient(ctx, option.WithCredentialsFile(serviceAccountKeyFilePath))
 	if err != nil {
 		return fmt.Errorf("Failed to authenticate to GCS: %v", err)
@@ -95,7 +80,7 @@ func downloadFromGCS(serviceAccountKeyFilePath string, bucketName string, object
 
 	fmt.Printf("File downloaded at %s\n", filePath)
 
-	// Close the client
+	// Close the client.
 	client.Close()
 
 	return nil
@@ -111,7 +96,7 @@ func unzipFile(zipFile, destDir string) error {
 
 	for _, file := range reader.File {
 		filePath := filepath.Join(destDir, file.Name)
-		if err := copyContent(filePath, file); err != nil {
+		if err := copyZipFileContent(filePath, file); err != nil {
 			return fmt.Errorf("%v", err)
 		}
 	}
@@ -120,7 +105,7 @@ func unzipFile(zipFile, destDir string) error {
 }
 
 
-func copyContent(filePath string, file *zip.File) error {
+func copyZipFileContent(filePath string, file *zip.File) error {
 	writer, err := os.Create(filePath)
 	defer writer.Close()
 	if err != nil {
@@ -142,21 +127,21 @@ func copyContent(filePath string, file *zip.File) error {
 
 
 func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildProvSignature []byte, err error) {
-	// Read the JSON file
+	// Read the JSON file.
 	data, err := ioutil.ReadFile(jsonFile)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("Failed to read JSON file: %v", err)
 	}
 
-	// Create a map to hold the JSON data
+	// Create a map to hold the JSON data.
 	var jsonData map[string]interface{}
 
-	// Unmarshal the JSON data into the map
+	// Unmarshal the JSON data into the map.
 	if err := json.Unmarshal(data, &jsonData); err != nil {
 		return "", "", nil, fmt.Errorf("Failed to unmarshal JSON data: %v", err)
 	}
 
-	// Access the value of the "sbom" key
+	// Access the value of the "sbom" key.
 	key := "sbom"
 	sbomValue := jsonData[key].(string)
 
@@ -165,7 +150,7 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
 		return "", "", nil, fmt.Errorf("Failed to unmarshal 'sbom' data: %v", err)
 	}
 
-	// get url of the signature zip of the package
+	// Get url of the signature zip of the package.
 	var sigURL string
 	for _, element := range sbomData.Packages {
 		if strings.HasPrefix(element.Spdxid, "SPDXRef-Package") {
@@ -177,15 +162,15 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
 		}
 	}
 
-	// get signature, key for build provenance
+	// Get signature, key for build provenance.
 	buildDetailsArray := jsonData["buildDetails"].([] interface{})
-	cryptokey, buildProvSig, err := getCryptokeyAndBuildProvSig(buildDetailsArray)
+	gcpKmsKey, buildProvSig, err := getGcpKmsKeyAndBuildProvSig(buildDetailsArray)
 	
-	return  sigURL, cryptokey, buildProvSig, nil
+	return  sigURL, gcpKmsKey, buildProvSig, nil
 }
 
 
-func getCryptokeyAndBuildProvSig(buildDetailsArray []interface{}) (cryptokey string, buildProvSig []byte, err error) {
+func getGcpKmsKeyAndBuildProvSig(buildDetailsArray []interface{}) (gcpKmsKey string, buildProvSig []byte, err error) {
 	for _, element := range buildDetailsArray {
 		buildDetailsData := element.(map[string]interface{})
 		envelopeData := buildDetailsData["envelope"].(map[string]interface{})
@@ -194,11 +179,11 @@ func getCryptokeyAndBuildProvSig(buildDetailsArray []interface{}) (cryptokey str
 			sigDataMap := item.(map[string]interface{})
 			for label, value := range sigDataMap {
 				if label == "keyid" {
-					cryptokey = strings.TrimPrefix(value.(string), "gcpkms://")
-					fields := strings.Split(cryptokey, "/")
+					gcpKmsKey = strings.TrimPrefix(value.(string), "gcpkms://")
+					fields := strings.Split(gcpKmsKey, "/")
 					for index, str := range fields {
 						if str == "cryptoKeys" {
-							cryptokey = fields[index + 1]
+							gcpKmsKey = fields[index + 1]
 							break
 						}
 					}
@@ -209,15 +194,15 @@ func getCryptokeyAndBuildProvSig(buildDetailsArray []interface{}) (cryptokey str
 		}
 	}
 
-	return cryptokey, buildProvSig, nil
+	return gcpKmsKey, buildProvSig, nil
 }
 
 
 func extractBucketAndObject(url string) (bucketName, objectName string, err error) {
-	// Remove the "gs://" prefix
+	// Remove the "gs://" prefix.
 	url = strings.TrimPrefix(url, "gs://")
 
-	// Split the URL into parts
+	// Split the URL into parts.
 	parts := strings.SplitN(url, "/", 2)
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid URL format")
@@ -228,7 +213,7 @@ func extractBucketAndObject(url string) (bucketName, objectName string, err erro
 
 
 func verifyDigest(artifactPath, destDir string) (ok bool, err error) {
-	// generate sha256 hash
+	// Generate sha256 hash.
 	packageFile, err := os.Open(artifactPath)
 	if err != nil {
 		return false, err
@@ -258,21 +243,21 @@ func verifyDigest(artifactPath, destDir string) (ok bool, err error) {
 
 
 func verifySignatures(destDir string, cert *x509.Certificate) (ok bool, err error) {
-	// Extract signature and convert to binary
+	// Extract signature and convert to binary.
 	signatureFilePath := filepath.Join(destDir, "signature.txt")
 	signatureBytes, err := extractAndConvertToBinary(signatureFilePath)
 	if err != nil {
 		return false, fmt.Errorf("Failed to decode signature hex: %v", err)
 	}
 
-	// Extract digest and convert to binary 
+	// Extract digest and convert to binary.
 	digestFilePath := filepath.Join(destDir, "digest.txt")
 	digestBytes, err := extractAndConvertToBinary(digestFilePath)
 	if err != nil {
 		return false, fmt.Errorf("Failed to decode digest hex: %v", err)
 	}
 
-	// Extract public key
+	// Extract public key.
 	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
 	if !ok {
 		return false, fmt.Errorf("Failed to parse ECDSA public key")
@@ -308,7 +293,7 @@ func downloadRootCert(rootCertPath string) error {
 	}
 	defer file.Close()
 
-	// Send a GET request to the URL
+	// Send a GET request to the URL.
 	url := "https://privateca-content-6333d504-0000-2df7-afd6-30fd38154590.storage.googleapis.com/a2c725a592f1d586f1f8/ca.crt"
 	response, err := http.Get(url)
 	if err != nil {
@@ -316,12 +301,12 @@ func downloadRootCert(rootCertPath string) error {
 	}
 	defer response.Body.Close()
 
-	// Check the response status code
+	// Check the response status code.
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("Failed to download: recieved status code %d", response.StatusCode)
 	}
 
-	// Copy the response body to the file
+	// Copy the response body to the file.
 	_, err = io.Copy(file, response.Body)
 	if err != nil {
 		return err
@@ -331,28 +316,38 @@ func downloadRootCert(rootCertPath string) error {
 }
 
 
-func verifyCertificate(rootCertPath, certChainPath string, cert *x509.Certificate) (ok bool, err error) {
+func verifyCertificate(destDir string, cert *x509.Certificate) (ok bool, err error) {
+	// Download root certificate.
+	rootCertPath := filepath.Join(destDir, "ca.crt")
+	if err := downloadRootCert(rootCertPath); err == nil {
+		fmt.Printf("File downloaded at %s\n", rootCertPath)
+	} else {
+		return false, fmt.Errorf("%v", err)
+	}
+
 	rootBytes, err := ioutil.ReadFile(rootCertPath)
 	if err != nil {
 		return false, fmt.Errorf("Failed to read CA file: %v", err)
 	}
 
+	// Verify the leaf certificate with the cert chain and the root certificate.
+	certChainPath := filepath.Join(destDir, "certChain.pem")
 	chainBytes, err := ioutil.ReadFile(certChainPath)
 	if err != nil {
 		return false, fmt.Errorf("Failed to read certificate chain file: %v", err)
 	}
 
-	// Create a certificate pool and add the CA certificate to it
+	// Create a certificate pool and add the CA certificate to it.
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(rootBytes)
 
-	// Create a certificate verifier with the pool and intermediate certificates
+	// Create a certificate verifier with the pool and intermediate certificates.
 	verifier := x509.VerifyOptions{
 		Roots:         pool,
 		Intermediates: x509.NewCertPool(),
 	}
 
-	// Add the intermediate certificates to the verifier
+	// Add the intermediate certificates to the verifier.
 	verifier.Intermediates.AppendCertsFromPEM(chainBytes)
 
 	if _, err := cert.Verify(verifier); err != nil {
@@ -406,7 +401,7 @@ func extractAndConvertToBinary(inputFilePath string) (Bytes []byte, err error) {
 }
 
 
-// extract the field value from a line based on the delimiter
+// Extract the field value from a line based on the delimiter.
 func getFieldFromLine(line, delimiter string) string {
 	fields := strings.Split(line, delimiter)
 	if len(fields) > 1 {
