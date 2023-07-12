@@ -15,13 +15,13 @@
 package main
 
 import (
-	"log"
+    "log"
 
-	"aoss-verifier/cmd"
+    "aoss-verifier/cmd"
 )
 
 func main() {
-	if err := cmd.Execute(); err != nil {
-		log.Fatalf("%v", err)
-	}
+    if err := cmd.Execute(); err != nil {
+        log.Fatalf("%v", err)
+    }
 }
