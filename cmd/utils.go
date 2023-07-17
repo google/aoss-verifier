@@ -69,9 +69,7 @@ type sbom struct {
 }
 
 
-func downloadFromGCS(serviceAccountKeyFilePath string, bucketName string, objectName string, filePath string) error {
-    ctx := context.Background()
-
+func downloadFromGCS(ctx context.Context, serviceAccountKeyFilePath string, bucketName string, objectName string, filePath string) error {
     // Authenticate using the service account key file.
     client, err := storage.NewClient(ctx, option.WithCredentialsFile(serviceAccountKeyFilePath))
     if err != nil {

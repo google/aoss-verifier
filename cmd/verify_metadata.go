@@ -148,7 +148,7 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
     metadata := fmt.Sprintf("%s.zip", metadata_type)
     objectName := fmt.Sprintf("%s/%s/%s/%s", language, packageID, version, metadata)
     zipFilePath := filepath.Join(destDir, metadata)
-    if err := downloadFromGCS(serviceAccountKeyFilePath, metadataBucketName, objectName, zipFilePath); err != nil {
+    if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, metadataBucketName, objectName, zipFilePath); err != nil {
         return err
     } else {
         cmd.Printf("File downloaded at %s\n", zipFilePath)

@@ -172,7 +172,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
     // Authenticate to GCS and download metadata.
     objectName := fmt.Sprintf("%s/%s/%s/buildinfo.zip", language, packageID, version)
     zipFilePath := filepath.Join(destDir, "buildinfo.zip")
-    if err := downloadFromGCS(serviceAccountKeyFilePath, metadataBucketName, objectName, zipFilePath); err != nil {
+    if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, metadataBucketName, objectName, zipFilePath); err != nil {
         return err
     } else {
         cmd.Printf("File downloaded at %s\n", zipFilePath)
@@ -195,7 +195,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
         return err
     }
     sigzipPath := filepath.Join(destDir, "package_signature.zip")
-    if err := downloadFromGCS(serviceAccountKeyFilePath, bucketName, objectName, sigzipPath); err != nil {
+    if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, bucketName, objectName, sigzipPath); err != nil {
         return err
     } else {
         cmd.Printf("File downloaded at %s\n", sigzipPath)
@@ -260,7 +260,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
         objectName = fmt.Sprintf("keys/%s-public.pem", cryptokey) 
         publicKeyPath := filepath.Join(destDir, "public.pem")
         buildProvSigPath := filepath.Join(destDir, "signature.sig")
-        if err := downloadFromGCS(serviceAccountKeyFilePath, bucketName, objectName, publicKeyPath); err != nil {
+        if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, bucketName, objectName, publicKeyPath); err != nil {
             return err
         } else {
             cmd.Printf("File downloaded at %s\n", publicKeyPath)
