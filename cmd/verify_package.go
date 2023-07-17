@@ -183,7 +183,8 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
     }
 
     jsonfile := filepath.Join(destDir, "buildInfo.json")
-    sigURL, cryptokey, buildProvSig, err := parseBuildInfoJSON(jsonfile)
+    spdxID := fmt.Sprintf("SPDXRef-Package-%v-%v.jar", strings.Split(packageID, ":")[1], version)
+    sigURL, cryptokey, buildProvSig, err := parseBuildInfoJSON(jsonfile, spdxID)
     if err != nil {
         return err
     }

@@ -43,8 +43,21 @@ import (
 const rootCertURL = "https://privateca-content-6333d504-0000-2df7-afd6-30fd38154590.storage.googleapis.com/a2c725a592f1d586f1f8/ca.crt"
 
 
-// The 'sbom' key in the buildInfo.json contains package information
-// from where the signature zip URL is extracted.
+type buildInfoJSON struct {
+	BuildDetails []struct {
+		Envelope        struct {
+			Signatures  []struct {
+				Sig   string `json:"sig"`
+				Keyid string `json:"keyid"`
+			} `json:"signatures"`
+		} `json:"envelope"`
+	} `json:"buildDetails"`
+	Sbom    string `json:"sbom"`
+}
+
+
+// The 'sbom' key in the buildInfo.json contains package
+// info from where the signature zip URL is extracted.
 type sbom struct {
     Packages []struct {
         Spdxid                string `json:"SPDXID"`
@@ -127,72 +140,47 @@ func copyZipFileContent(filePath string, file *zip.File) error {
 }
 
 
-func parseBuildInfoJSON(jsonFile string) (signatureURL, gcpKmsKey string, buildProvSig []byte, err error) {
+func parseBuildInfoJSON(jsonFile, spdxID string) (sigURL, gcpKmsKey string, buildProvSig []byte, err error) {
     // Read the JSON file.
     data, err := ioutil.ReadFile(jsonFile)
     if err != nil {
         return "", "", nil, fmt.Errorf("Failed to read JSON file: %v", err)
     }
 
-    // Create a map to hold the JSON data.
-    var jsonData map[string]interface{}
-    if err := json.Unmarshal(data, &jsonData); err != nil {
+    var jsonData *buildInfoJSON
+    if err = json.Unmarshal(data, &jsonData); err != nil {
         return "", "", nil, fmt.Errorf("Failed to unmarshal JSON data: %v", err)
     }
-
-    // Access the value of the "sbom" key.
-    key := "sbom"
-    sbomValue := jsonData[key].(string)
-
+    
     var sbomData *sbom
-    if err = json.Unmarshal([]byte(sbomValue), &sbomData); err != nil {
+    if err = json.Unmarshal([]byte(jsonData.Sbom), &sbomData); err != nil {
         return "", "", nil, fmt.Errorf("Failed to unmarshal 'sbom' data: %v", err)
     }
 
     // Get url of the signature zip of the package.
     for _, element := range sbomData.Packages {
-        if strings.HasPrefix(element.Spdxid, "SPDXRef-Package") {
+        if element.Spdxid == spdxID {
             for _, val := range element.ExternalRefs {
                 if val.ReferenceCategory == "OTHER" {
-                    signatureURL = val.ReferenceLocator
+                    sigURL = val.ReferenceLocator
                 }
             }
         }
     }
-
-    // Get signature, key for build provenance.
-    buildDetailsArray := jsonData["buildDetails"].([] interface{})
-    gcpKmsKey, buildProvSig = getGcpKmsKeyAndBuildProvSig(buildDetailsArray)
     
-    return  signatureURL, gcpKmsKey, buildProvSig, nil
-}
-
-
-func getGcpKmsKeyAndBuildProvSig(buildDetailsArray []interface{}) (gcpKmsKey string, buildProvSig []byte) {
-    for _, element := range buildDetailsArray {
-        buildDetailsData := element.(map[string]interface{})
-        envelopeData := buildDetailsData["envelope"].(map[string]interface{})
-        sigData := envelopeData["signatures"].([] interface{})
-        for _, item := range sigData {
-            sigDataMap := item.(map[string]interface{})
-            for label, value := range sigDataMap {
-                if label == "keyid" {
-                    gcpKmsKey = strings.TrimPrefix(value.(string), "gcpkms://")
-                    fields := strings.Split(gcpKmsKey, "/")
-                    for index, str := range fields {
-                        if str == "cryptoKeys" {
-                            gcpKmsKey = fields[index + 1]
-                            break
-                        }
-                    }
-                } else {
-                    buildProvSig, _ = base64.StdEncoding.DecodeString(value.(string))
-                }
-            }
+    // Get build provenance signatures and public key.
+    envelopeSig := jsonData.BuildDetails[0].Envelope.Signatures[0]
+    buildProvSig, _ = base64.StdEncoding.DecodeString(envelopeSig.Sig)
+    gcpKmsKey = strings.TrimPrefix(envelopeSig.Keyid, "gcpkms://")
+    fields := strings.Split(gcpKmsKey, "/")
+    for index, str := range fields {
+        if str == "cryptoKeys" {
+            gcpKmsKey = fields[index + 1]
+            break
         }
     }
 
-    return gcpKmsKey, buildProvSig
+    return  sigURL, gcpKmsKey, buildProvSig, nil
 }
 
 
