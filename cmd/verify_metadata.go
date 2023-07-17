@@ -145,13 +145,15 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
     }
 
     // Authenticate to GCS and download metadata.
-    bucketName := "cloud-aoss-metadata"
     metadata := fmt.Sprintf("%s.zip", metadata_type)
     objectName := fmt.Sprintf("%s/%s/%s/%s", language, packageID, version, metadata)
     zipFilePath := filepath.Join(destDir, metadata)
-    if err := downloadFromGCS(serviceAccountKeyFilePath, bucketName, objectName, zipFilePath); err != nil {
+    if err := downloadFromGCS(serviceAccountKeyFilePath, metadataBucketName, objectName, zipFilePath); err != nil {
         return err
+    } else {
+        cmd.Printf("File downloaded at %s\n", zipFilePath)
     }
+
     if err := unzipFile(zipFilePath, destDir); err != nil {
         return err
     }
@@ -168,10 +170,18 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 
     // Verify certificates.
     if !disableCertificateVerification {
-        if ok, err := verifyCertificate(destDir, cert); ok {
-            fmt.Printf("Certificates verified successfully!\n")
+        // Download root certificate.
+        rootCertPath := filepath.Join(destDir, "ca.crt")
+        if err := downloadRootCert(rootCertPath); err == nil {
+            cmd.Printf("File downloaded at %s\n", rootCertPath)
         } else {
-            fmt.Printf("Unsuccessfufl Certificate Verification\n")
+            return err
+        }
+
+        if ok, err := verifyCertificate(destDir, rootCertPath, cert); ok {
+            cmd.Printf("Certificates verified successfully!\n")
+        } else {
+            cmd.Printf("Unsuccessful Certificate Verification\n")
             if err != nil {
                 return err
             }
@@ -193,9 +203,9 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
     // Verify authenticity.
     ok, err = verifySignatures(destDir, cert)
     if ok {
-        fmt.Println("Metadata Signature Verified successfully!")
+        cmd.Println("Metadata Signature Verified successfully!")
     } else {
-        fmt.Println("Unsuccessful Metadata Signature Verification")
+        cmd.Println("Unsuccessful Metadata Signature Verification")
         if err != nil {
             return err
         }

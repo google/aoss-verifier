@@ -40,6 +40,9 @@ import (
 )
 
 
+const rootCertURL = "https://privateca-content-6333d504-0000-2df7-afd6-30fd38154590.storage.googleapis.com/a2c725a592f1d586f1f8/ca.crt"
+
+
 // The 'sbom' key in the buildInfo.json contains package information
 // from where the signature zip URL is extracted.
 type sbom struct {
@@ -77,8 +80,6 @@ func downloadFromGCS(serviceAccountKeyFilePath string, bucketName string, object
     if _, err := io.Copy(file, reader); err != nil {
         return fmt.Errorf("Failed to download the file: %v", err)
     }
-
-    fmt.Printf("File downloaded at %s\n", filePath)
 
     // Close the client.
     client.Close()
@@ -126,7 +127,7 @@ func copyZipFileContent(filePath string, file *zip.File) error {
 }
 
 
-func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildProvSignature []byte, err error) {
+func parseBuildInfoJSON(jsonFile string) (signatureURL, gcpKmsKey string, buildProvSig []byte, err error) {
     // Read the JSON file.
     data, err := ioutil.ReadFile(jsonFile)
     if err != nil {
@@ -135,8 +136,6 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
 
     // Create a map to hold the JSON data.
     var jsonData map[string]interface{}
-
-    // Unmarshal the JSON data into the map.
     if err := json.Unmarshal(data, &jsonData); err != nil {
         return "", "", nil, fmt.Errorf("Failed to unmarshal JSON data: %v", err)
     }
@@ -151,12 +150,11 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
     }
 
     // Get url of the signature zip of the package.
-    var sigURL string
     for _, element := range sbomData.Packages {
         if strings.HasPrefix(element.Spdxid, "SPDXRef-Package") {
             for _, val := range element.ExternalRefs {
                 if val.ReferenceCategory == "OTHER" {
-                    sigURL = val.ReferenceLocator
+                    signatureURL = val.ReferenceLocator
                 }
             }
         }
@@ -164,9 +162,9 @@ func parseBuildInfoJSON(jsonFile string) (signatureURL, cryptoKey string, buildP
 
     // Get signature, key for build provenance.
     buildDetailsArray := jsonData["buildDetails"].([] interface{})
-    gcpKmsKey, buildProvSig := getGcpKmsKeyAndBuildProvSig(buildDetailsArray)
+    gcpKmsKey, buildProvSig = getGcpKmsKeyAndBuildProvSig(buildDetailsArray)
     
-    return  sigURL, gcpKmsKey, buildProvSig, nil
+    return  signatureURL, gcpKmsKey, buildProvSig, nil
 }
 
 
@@ -294,8 +292,7 @@ func downloadRootCert(rootCertPath string) error {
     defer file.Close()
 
     // Send a GET request to the URL.
-    url := "https://privateca-content-6333d504-0000-2df7-afd6-30fd38154590.storage.googleapis.com/a2c725a592f1d586f1f8/ca.crt"
-    response, err := http.Get(url)
+    response, err := http.Get(rootCertURL)
     if err != nil {
         return fmt.Errorf("Failed to download: %v", err)
     }
@@ -316,15 +313,7 @@ func downloadRootCert(rootCertPath string) error {
 }
 
 
-func verifyCertificate(destDir string, cert *x509.Certificate) (ok bool, err error) {
-    // Download root certificate.
-    rootCertPath := filepath.Join(destDir, "ca.crt")
-    if err := downloadRootCert(rootCertPath); err == nil {
-        fmt.Printf("File downloaded at %s\n", rootCertPath)
-    } else {
-        return false, err
-    }
-
+func verifyCertificate(destDir, rootCertPath string, cert *x509.Certificate) (ok bool, err error) {
     rootBytes, err := ioutil.ReadFile(rootCertPath)
     if err != nil {
         return false, fmt.Errorf("Failed to read CA file: %v", err)
