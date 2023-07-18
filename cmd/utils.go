@@ -43,7 +43,7 @@ import (
 const rootCertURL = "https://privateca-content-6333d504-0000-2df7-afd6-30fd38154590.storage.googleapis.com/a2c725a592f1d586f1f8/ca.crt"
 
 
-type buildInfoJSON struct {
+type buildInfo struct {
 	BuildDetails []struct {
 		Envelope        struct {
 			Signatures  []struct {
@@ -145,7 +145,7 @@ func parseBuildInfoJSON(jsonFile, spdxID string) (sigURL, gcpKmsKey string, buil
         return "", "", nil, fmt.Errorf("Failed to read JSON file: %v", err)
     }
 
-    var jsonData *buildInfoJSON
+    var jsonData *buildInfo
     if err = json.Unmarshal(data, &jsonData); err != nil {
         return "", "", nil, fmt.Errorf("Failed to unmarshal JSON data: %v", err)
     }
@@ -167,6 +167,13 @@ func parseBuildInfoJSON(jsonFile, spdxID string) (sigURL, gcpKmsKey string, buil
     }
     
     // Get build provenance signatures and public key.
+    if len(jsonData.BuildDetails) < 1 {
+        return "", "", nil, fmt.Errorf("Couldn't get build details")
+    }
+    if len(jsonData.BuildDetails[0].Envelope.Signatures) < 1 {
+        return "", "", nil, fmt.Errorf("Couldn't get build provenance signatures")
+    }
+
     envelopeSig := jsonData.BuildDetails[0].Envelope.Signatures[0]
     buildProvSig, _ = base64.StdEncoding.DecodeString(envelopeSig.Sig)
     gcpKmsKey = strings.TrimPrefix(envelopeSig.Keyid, "gcpkms://")
