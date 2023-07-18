@@ -20,7 +20,7 @@ import (
 
 var rootCmd = &cobra.Command{
     Use:   "aoss-verifier",
-    Short: "Command line tool to easily verify signatures and certificates",
+    Short: "Command line tool to verify signatures and certificates.",
     Run: func(cmd *cobra.Command, args []string) {
         cmd.Help()
     },

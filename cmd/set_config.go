@@ -87,7 +87,7 @@ func setConfig(cmd *cobra.Command, args []string) error {
     }
     writer.Flush()
 
-    fmt.Println("aoss-verifier config updated successfully")
+    cmd.Println("aoss-verifier config updated successfully")
 
     return nil
 }

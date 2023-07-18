@@ -39,6 +39,8 @@ const (
     serviceAccountKeyFilePathFlagName = "service_account_key_file_path"
     disableCertificateVerificationFlagName = "disable_certificate_verification"
     disableDeletesFlagName = "disable_deletes"
+
+    metadataBucketName = "cloud-aoss-metadata"
 )
 
 
@@ -148,7 +150,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
     }
 
     // Create temporary downloads directory.
-    downloadsDir, err := cmd.Flags().GetString("temp_downloads_path")
+    downloadsDir, err := cmd.Flags().GetString(tempDownloadsPathFlagName)
     if err != nil {
         return err
     }
@@ -168,30 +170,35 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
     }
 
     // Authenticate to GCS and download metadata.
-    bucketName := "cloud-aoss-metadata"
     objectName := fmt.Sprintf("%s/%s/%s/buildinfo.zip", language, packageID, version)
     zipFilePath := filepath.Join(destDir, "buildinfo.zip")
-    if err := downloadFromGCS(serviceAccountKeyFilePath, bucketName, objectName, zipFilePath); err != nil {
+    if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, metadataBucketName, objectName, zipFilePath); err != nil {
         return err
+    } else {
+        cmd.Printf("File downloaded at %s\n", zipFilePath)
     }
+
     if err := unzipFile(zipFilePath, destDir); err != nil {
         return err
     }
 
     jsonfile := filepath.Join(destDir, "buildInfo.json")
-    sigURL, cryptokey, buildProvSig, err := parseBuildInfoJSON(jsonfile)
+    spdxID := fmt.Sprintf("SPDXRef-Package-%v-%v.jar", strings.Split(packageID, ":")[1], version)
+    sigURL, cryptokey, buildProvSig, err := parseBuildInfoJSON(jsonfile, spdxID)
     if err != nil {
         return err
     }
 
     // Authenticate to GCS and download package signature.
-    bucketName, objectName, err = extractBucketAndObject(sigURL)
+    bucketName, objectName, err := extractBucketAndObject(sigURL)
     if err != nil {
         return err
     }
     sigzipPath := filepath.Join(destDir, "package_signature.zip")
-    if err := downloadFromGCS(serviceAccountKeyFilePath, bucketName, objectName, sigzipPath); err != nil {
+    if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, bucketName, objectName, sigzipPath); err != nil {
         return err
+    } else {
+        cmd.Printf("File downloaded at %s\n", sigzipPath)
     }
 
     destDir = filepath.Join(destDir, "package_signatures")
@@ -209,10 +216,18 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 
     // Verify certificates.
     if !disableCertificateVerification {
-        if ok, err := verifyCertificate(destDir, cert); ok {
-            fmt.Printf("Certificates verified successfully!\n")
+        // Download root certificate.
+        rootCertPath := filepath.Join(destDir, "ca.crt")
+        if err := downloadRootCert(rootCertPath); err == nil {
+            cmd.Printf("File downloaded at %s\n", rootCertPath)
         } else {
-            fmt.Printf("Unsuccessful Certificate Verification\n")
+            return err
+        }
+
+        if ok, err := verifyCertificate(destDir, rootCertPath, cert); ok {
+            cmd.Printf("Certificates verified successfully!\n")
+        } else {
+            cmd.Printf("Unsuccessful Certificate Verification\n")
             if err != nil {
                 return err
             }
@@ -231,9 +246,9 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
     // Verify authenticity.
     ok, err = verifySignatures(destDir, cert)
     if ok {
-        fmt.Println("Signature Verified successfully!")
+        cmd.Println("Signature Verified successfully!")
     } else {
-        fmt.Println("Unsuccessful Signature Verification")
+        cmd.Println("Unsuccessful Signature Verification")
         if err != nil {
             return err
         }
@@ -245,8 +260,10 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
         objectName = fmt.Sprintf("keys/%s-public.pem", cryptokey) 
         publicKeyPath := filepath.Join(destDir, "public.pem")
         buildProvSigPath := filepath.Join(destDir, "signature.sig")
-        if err := downloadFromGCS(serviceAccountKeyFilePath, bucketName, objectName, publicKeyPath); err != nil {
+        if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, bucketName, objectName, publicKeyPath); err != nil {
             return err
+        } else {
+            cmd.Printf("File downloaded at %s\n", publicKeyPath)
         }
 
         if err := ioutil.WriteFile(buildProvSigPath, buildProvSig, 0644); err != nil {
@@ -259,9 +276,9 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
         }
 
         if length := len(stderror); stderror[ length - 3 : length - 1] == "OK" {
-            fmt.Println("Build Provenance verified successfully!")
+            cmd.Println("Build Provenance verified successfully!")
         } else {
-            fmt.Println("Unsuccessful verification of build provenance")
+            cmd.Println("Unsuccessful verification of build provenance")
         }
     }
 
