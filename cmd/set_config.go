@@ -15,79 +15,75 @@
 package cmd
 
 import (
-    "fmt"
-    "log"
-    "os/user"
-    "path/filepath"
-    "os"
-    "bufio"
+	"bufio"
+	"fmt"
+	"log"
+	"os"
+	"os/user"
+	"path/filepath"
 
-    "github.com/spf13/cobra"
-    "github.com/spf13/viper"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
-
 
 const (
-    configFileName = ".aoss-verifier"
-    configFileType = "yaml"
+	configFileName = ".aoss-verifier"
+	configFileType = "yaml"
 )
-
 
 var (
-    homeDir string
-    
-    setConfigCmd = &cobra.Command{
-        Use:   "set-config service_account_key_file",
-        Short: "Set the configuration settings",
-        Long:  "Set the configuration settings by providing the path to the service account key file.",
-        Run: func(cmd *cobra.Command, args []string) {
-            if err := setConfig(cmd, args); err != nil {
-                log.Fatalf("Failed to set config: %v\nUse -h for more information\n", err)
-            }
-        },
-    }
+	homeDir string
+
+	setConfigCmd = &cobra.Command{
+		Use:   "set-config service_account_key_file",
+		Short: "Set the configuration settings",
+		Long:  "Set the configuration settings by providing the path to the service account key file.",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := setConfig(cmd, args); err != nil {
+				log.Fatalf("Failed to set config: %v\nUse -h for more information\n", err)
+			}
+		},
+	}
 )
 
-
 func init() {
-    rootCmd.AddCommand(setConfigCmd)
+	rootCmd.AddCommand(setConfigCmd)
 
-    // Get the user's home directory.
-    usr, err := user.Current()
-    if err != nil {
-        log.Fatalf("Failed to get user's home directory: %v", err)
-    }
-    homeDir = usr.HomeDir
+	// Get the user's home directory.
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatalf("Failed to get user's home directory: %v", err)
+	}
+	homeDir = usr.HomeDir
 
-    // Set the configuration file name and location.
-    viper.SetConfigName(configFileName)
-    viper.SetConfigType(configFileType)
-    viper.AddConfigPath(homeDir)
+	// Set the configuration file name and location.
+	viper.SetConfigName(configFileName)
+	viper.SetConfigType(configFileType)
+	viper.AddConfigPath(homeDir)
 }
 
-
 func setConfig(cmd *cobra.Command, args []string) error {
-    // Check if the service account key file path is provided.
-    if len(args) == 0 {
-        return fmt.Errorf("Please specify the service account key file path")
-    }
+	// Check if the service account key file path is provided.
+	if len(args) == 0 {
+		return fmt.Errorf("please specify the service account key file path")
+	}
 
-    configFilePath := filepath.Join(homeDir, ".aoss-verifier.yaml")
-    // If config file exists already, os.Create will truncate and update.
-    file, err := os.Create(configFilePath)
-    defer file.Close()
-    if err != nil {
-        return err
-    }
+	configFilePath := filepath.Join(homeDir, ".aoss-verifier.yaml")
+	// If config file exists already, os.Create will truncate and update.
+	file, err := os.Create(configFilePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
-    // Write the service account key file path to the config file.
-    writer := bufio.NewWriter(file)
-    if _, err = fmt.Fprintf(writer, "service_account_key_file: %v", args[0]); err != nil {
-        return err
-    }
-    writer.Flush()
+	// Write the service account key file path to the config file.
+	writer := bufio.NewWriter(file)
+	if _, err = fmt.Fprintf(writer, "service_account_key_file: %v", args[0]); err != nil {
+		return err
+	}
+	writer.Flush()
 
-    cmd.Println("aoss-verifier config updated successfully")
+	cmd.Println("aoss-verifier config updated successfully")
 
-    return nil
+	return nil
 }
