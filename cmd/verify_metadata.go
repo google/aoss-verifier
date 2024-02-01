@@ -57,7 +57,7 @@ func init() {
 }
 
 // verify-metadata follows the following workflow:
-// 1. Download the metadata zip file from GCS.
+// 1. Download the metadata from GCS if not already downloaded by user.
 // 2. If not disabled, download the root certificate and match it with the leaf certificate and the certificate chain.
 // 3. Verify the sha256 digest of the metadata and its signatures using the public key and the certificate.
 func verifyMetadata(cmd *cobra.Command, args []string) error {
@@ -171,7 +171,7 @@ func verifyPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, destDi
 	}
 
 	for _, v := range views {
-		if v.Info == "" {
+		if v.Info == "" && v.Name == "HealthInfo" {
 			continue
 		}
 		cert, err := parseCertificate([]byte(v.SignatureDetails.CertInfo.Cert))
@@ -242,9 +242,10 @@ func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, des
 
 	// Authenticate to GCS and download metadata.
 	metadata := fmt.Sprintf("%s.zip", metadata_type)
-	objectName := fmt.Sprintf("%s/%s/%s/%s", language, packageID, version, metadata)
+	ob := fmt.Sprintf("%s/%s/%s/%s", language, packageID, version, metadata)
 	zipFilePath := filepath.Join(destDir, metadata)
-	if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, metadataBuckets[1], objectName, zipFilePath); err != nil {
+
+	if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, metadataBuckets[1], ob, zipFilePath); err != nil {
 		return err
 	} else {
 		cmd.Printf("File downloaded at %s\n", zipFilePath)
@@ -253,16 +254,15 @@ func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, des
 		return err
 	}
 
-	sigzipPath := filepath.Join(destDir, "signature.zip")
-	if err := unzipFile(sigzipPath, destDir); err != nil {
+	if err := unzipFile(filepath.Join(destDir, "signature.zip"), destDir); err != nil {
 		return err
 	}
 
-	certBytes, err := os.ReadFile(filepath.Join(destDir, "cert.pem"))
+	bytes, err := os.ReadFile(filepath.Join(destDir, "cert.pem"))
 	if err != nil {
 		return fmt.Errorf("failed to read cert.pem: %v", err)
 	}
-	cert, err := parseCertificate(certBytes)
+	cert, err := parseCertificate(bytes)
 	if err != nil {
 		return err
 	}
@@ -270,18 +270,18 @@ func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, des
 	// Verify certificates.
 	if !disableCertificateVerification {
 		// Download root certificate.
-		rootCertPath := filepath.Join(destDir, "ca.crt")
-		if err := downloadRootCert(rootCertPath); err == nil {
-			cmd.Printf("File downloaded at %s\n", rootCertPath)
+		certPath := filepath.Join(destDir, "ca.crt")
+		if err := downloadRootCert(certPath); err == nil {
+			cmd.Printf("File downloaded at %s\n", certPath)
 		} else {
 			return err
 		}
 
-		chainBytes, err := os.ReadFile(filepath.Join(destDir, "certChain.pem"))
+		cb, err := os.ReadFile(filepath.Join(destDir, "certChain.pem"))
 		if err != nil {
 			return fmt.Errorf("failed to read certificate chain file: %v", err)
 		}
-		if ok, err := verifyCertificate(chainBytes, rootCertPath, cert); ok {
+		if ok, err := verifyCertificate(cb, certPath, cert); ok {
 			cmd.Printf("Certificates verified successfully!\n")
 		} else {
 			cmd.Printf("Unsuccessful Certificate Verification\n")
@@ -291,20 +291,17 @@ func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, des
 		}
 	}
 
-	jsonFile := fmt.Sprintf("%sInfo.json", strings.TrimSuffix(metadata, "info.zip"))
-	metadataPath := filepath.Join(destDir, jsonFile)
-
 	// Verify data integrity.
-	fileContent, err := os.ReadFile(filepath.Join(destDir, "digest.txt"))
+	actualBytes, err := os.ReadFile(filepath.Join(destDir, "digest.txt"))
 	if err != nil {
 		return err
 	}
 
-	digestBytes, err := os.ReadFile(metadataPath)
+	digBytes, err := os.ReadFile(filepath.Join(destDir, fmt.Sprintf("%sInfo.json", strings.TrimSuffix(metadata, "info.zip"))))
 	if err != nil {
 		return fmt.Errorf("failed to read CA file: %v", err)
 	}
-	ok, err := verifyDigest(digestBytes, getFieldFromLine(string(fileContent), ":"))
+	ok, err := verifyDigest(digBytes, getFieldFromLine(string(actualBytes), ":"))
 	if !ok {
 		if err != nil {
 			return err
@@ -313,18 +310,15 @@ func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, des
 	}
 
 	// Verify authenticity.
-	// Extract signature and convert to binary.
-	signatureBytes, err := extractAndConvertToBinary(filepath.Join(destDir, "signature.txt"))
+	sig, err := extractAndConvertToBinary(filepath.Join(destDir, "signature.txt"))
 	if err != nil {
 		return fmt.Errorf("failed to decode signature hex: %v", err)
 	}
-
-	// Extract digest and convert to binary.
-	digestBytes, err = extractAndConvertToBinary(filepath.Join(destDir, "digest.txt"))
+	dig, err := extractAndConvertToBinary(filepath.Join(destDir, "digest.txt"))
 	if err != nil {
 		return fmt.Errorf("failed to decode digest hex: %v", err)
 	}
-	ok, err = verifySignatures(signatureBytes, digestBytes, cert)
+	ok, err = verifySignatures(sig, dig, cert)
 	if ok {
 		cmd.Println("Metadata Signature Verified successfully!")
 	} else {

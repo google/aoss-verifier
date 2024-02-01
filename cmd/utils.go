@@ -351,14 +351,14 @@ func downloadRootCert(rootCertPath string) error {
 }
 
 func verifyCertificate(chainBytes []byte, rootCertPath string, cert *x509.Certificate) (ok bool, err error) {
-	rootBytes, err := os.ReadFile(rootCertPath)
+	bytes, err := os.ReadFile(rootCertPath)
 	if err != nil {
 		return false, fmt.Errorf("failed to read CA file: %v", err)
 	}
 
 	// Create a certificate pool and add the CA certificate to it.
 	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(rootBytes)
+	pool.AppendCertsFromPEM(bytes)
 
 	// Create a certificate verifier with the pool and intermediate certificates.
 	verifier := x509.VerifyOptions{
@@ -408,12 +408,12 @@ func extractAndConvertToBinary(inputFilePath string) (Bytes []byte, err error) {
 	}
 
 	field := getFieldFromLine(string(hexValue), ":")
-	dataBytes, err := hex.DecodeString(field)
+	bytes, err := hex.DecodeString(field)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode the hex: %v", err)
 	}
 
-	return dataBytes, nil
+	return bytes, nil
 }
 
 // Extract the field value from a line based on the delimiter.
