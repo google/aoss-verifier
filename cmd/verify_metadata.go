@@ -100,6 +100,16 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	metadata_type, err := cmd.Flags().GetString(metadataTypeFlagName)
+	if err != nil {
+		return err
+	}
+
+	if metadata_type != "buildinfo" && metadata_type != "vexinfo" && metadata_type != "healthinfo" && metadata_type != "premiuminfo" {
+		return fmt.Errorf("metadata type should be either of buildinfo, vexinfo, healthinfo or premiuminfo")
+	}
+
 	// If the user didn't use the --service_account_key_file flag
 	if serviceAccountKeyFilePath == "" {
 		// Read config file.
@@ -140,23 +150,20 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := verifyPremiumMetadata(cmd, serviceAccountKeyFilePath, destDir, artifactPath, language, packageID, version, disableCertificateVerification, disableDeletes); err == nil {
-		return nil
-	} else if err := verifyNONPremiumMetadata(cmd, serviceAccountKeyFilePath, destDir, language, packageID, version, disableCertificateVerification, disableDeletes); err != nil {
-		return err
+	if metadata_type == "premiuminfo" {
+		return verifyPremiumMetadata(cmd, serviceAccountKeyFilePath, destDir, artifactPath, language, packageID, version, disableCertificateVerification, disableDeletes)
 	}
 
-	return nil
-
+	return verifyNONPremiumMetadata(cmd, serviceAccountKeyFilePath, destDir, language, packageID, version, metadata_type, disableCertificateVerification, disableDeletes)
 }
 
 func verifyPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, destDir, artifactPath, language, packageID, version string, disableCertificateVerification, disableDeletes bool) error {
-	rootBytes, err := os.ReadFile(artifactPath)
+	bytes, err := os.ReadFile(artifactPath)
 	if err != nil {
-		return fmt.Errorf("failed to read CA file: %v", err)
+		return fmt.Errorf("failed to read artifact file: %v", err)
 	}
 	var jsonData *amalgamView
-	if err = json.Unmarshal(rootBytes, &jsonData); err != nil {
+	if err = json.Unmarshal(bytes, &jsonData); err != nil {
 		return fmt.Errorf("failed to unmarshal JSON data: %v", err)
 	}
 
@@ -190,7 +197,7 @@ func verifyPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, destDi
 			}
 
 			if ok, err := verifyCertificate([]byte(v.SignatureDetails.CertInfo.CertChain), certPath, cert); ok {
-				cmd.Printf("%s certificates verified successfully!\n", v.Name)
+				cmd.Printf("%s Certificates Verified successfully!\n", v.Name)
 			} else {
 				cmd.Printf("Unsuccessful Certificate Verification of %s\n", v.Name)
 				if err != nil {
@@ -231,15 +238,7 @@ func verifyPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, destDi
 	return nil
 }
 
-func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, destDir, language, packageID, version string, disableCertificateVerification, disableDeletes bool) error {
-	metadata_type, err := cmd.Flags().GetString(metadataTypeFlagName)
-	if err != nil {
-		return err
-	}
-	if metadata_type != "buildinfo" && metadata_type != "vexinfo" && metadata_type != "healthinfo" {
-		return fmt.Errorf("metadata type should be either of buildinfo, vexinfo, healthinfo")
-	}
-
+func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, destDir, language, packageID, version, metadata_type string, disableCertificateVerification, disableDeletes bool) error {
 	// Authenticate to GCS and download metadata.
 	metadata := fmt.Sprintf("%s.zip", metadata_type)
 	ob := fmt.Sprintf("%s/%s/%s/%s", language, packageID, version, metadata)
@@ -299,7 +298,7 @@ func verifyNONPremiumMetadata(cmd *cobra.Command, serviceAccountKeyFilePath, des
 
 	digBytes, err := os.ReadFile(filepath.Join(destDir, fmt.Sprintf("%sInfo.json", strings.TrimSuffix(metadata, "info.zip"))))
 	if err != nil {
-		return fmt.Errorf("failed to read CA file: %v", err)
+		return fmt.Errorf("failed to read file: %v", err)
 	}
 	ok, err := verifyDigest(digBytes, getFieldFromLine(string(actualBytes), ":"))
 	if !ok {

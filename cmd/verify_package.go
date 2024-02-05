@@ -165,12 +165,7 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := verifyPremiumPackage(cmd, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version, disableDeletes, verifyBuildProvenance, disableCertificateVerification); err == nil {
-		return nil
-	} else if err := verifyNONPremiumPackage(cmd, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version, disableDeletes, verifyBuildProvenance, disableCertificateVerification); err != nil {
-		return err
-	}
-	return nil
+	return verifyPremiumPackage(cmd, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version, disableDeletes, verifyBuildProvenance, disableCertificateVerification)
 }
 
 func verifyPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version string, disableDeletes, verifyBuildProvenance, disableCertificateVerification bool) error {
@@ -178,26 +173,26 @@ func verifyPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFilePath
 	obj := fmt.Sprintf("%s/%s/%s/metadata.json", language, packageID, version)
 	jsonFile := filepath.Join(destDir, fmt.Sprintf("%s_%s_%s_metadata.json", language, packageID, version))
 	if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, metadataBuckets[0], obj, jsonFile); err != nil {
-		return err
+		return verifyNONPremiumPackage(cmd, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version, disableDeletes, verifyBuildProvenance, disableCertificateVerification)
 	} else {
 		cmd.Printf("File downloaded at %s\n", jsonFile)
 	}
 
 	bytes, err := os.ReadFile(jsonFile)
 	if err != nil {
-		return fmt.Errorf("failed to read CA file: %v", err)
+		return fmt.Errorf("failed to read file: %v", err)
 	}
 	var jsonData *amalgamView
 	if err = json.Unmarshal(bytes, &jsonData); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON data: %v", err)
+		return verifyNONPremiumPackage(cmd, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version, disableDeletes, verifyBuildProvenance, disableCertificateVerification)
 	}
 
 	spdxID := ""
-	if language == "Java" {
+	if language == "java" {
 		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v.jar", strings.Split(packageID, ":")[1], version)
-	} else if language == "Python" {
+	} else if language == "python" {
 		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v-py3-none-any.whl", packageID, version)
-	} else if language == "Javascript" || jsonData.HealthInfo == "" {
+	} else if language == "javascript" || jsonData.HealthInfo == "" {
 		cmd.Printf("%s %s is not built by AOSS.\n", packageID, version)
 		return nil
 	}
@@ -235,7 +230,7 @@ func verifyPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFilePath
 	// Verify data integrity.
 	bytes, err = os.ReadFile(artifactPath)
 	if err != nil {
-		return fmt.Errorf("failed to read artifactPath: %v", err)
+		return fmt.Errorf("failed to read artifact file: %v", err)
 	}
 	ok, err := verifyDigest(bytes, sigDetails.Digest[0].Digest)
 	if !ok {
@@ -312,7 +307,7 @@ func verifyNONPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFileP
 	}
 
 	spdxID := ""
-	if language == "Java" {
+	if language == "java" {
 		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v.jar", strings.Split(packageID, ":")[1], version)
 	} else {
 		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v-py3-none-any.whl", packageID, version)

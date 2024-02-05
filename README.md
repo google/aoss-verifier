@@ -106,7 +106,7 @@ Build Provenance verified successfully!
 
 ### Verify metadata
 
-To verify metadata, you'll need to pass the metadata type, language, package id and the version of the package for which it is desired to verify the metadata via the `--metadata_type`, `--language`, `--package_id` and `--version` flags.
+To verify metadata, you'll need to pass the metadata type, language, package id and the version of the package for which it is desired to verify the metadata via the `--metadata_type`, `--language`, `--package_id`, `--version` and `--artifact_path` flags.
 
 ```command
 $ aoss-verifier verify-metadata --metadata_type TYPE --language LANGUAGE --package_id PACKAGE_ID --version VERSION [flags]
@@ -114,17 +114,19 @@ $ aoss-verifier verify-metadata --metadata_type TYPE --language LANGUAGE --packa
 
 > where
 >
-> TYPE: buildinfo/vexinfo/healthinfo
+> TYPE: buildinfo/vexinfo/healthinfo/premiuminfo
 > 
 > LANGUAGE: programming language of the package; must be in lowercase
 > 
 > PACKAGE_ID:
 > - for java groupid:artifactid
 > - for python package_name
-> 
+>
 > VERSION: version of the package
+>
+> ARTIFACT_PATH: path to the downloaded metadata file required to verify premium metadata
 
-#### Example
+#### Example 1
 
 ```command
 $ aoss-verifier verify-metadata --metadata_type vexinfo --language java --package_id commons-codec:commons-codec --version 1.15
@@ -137,5 +139,22 @@ Certificates verified successfully!
 Metadata Signature Verified successfully!
 ```
 
+#### Example 2
+
+```command
+$ aoss-verifier verify-metadata --metadata_type premiuminfo --language java --package_id cglib:cglib --version 3.3.0 --artifact_path target/dependency/metadata.json
+```
+
+```
+File downloaded at tmp_downloads/cglib:cglib-3.3.0-2024_02_05_11:17:58/ca.crt
+BuildInfo Certificates Verified successfully!
+BuildInfo Metadata Signature Verified successfully!
+File downloaded at tmp_downloads/cglib:cglib-3.3.0-2024_02_05_11:17:58/ca.crt
+HealthInfo Certificates Verified successfully!
+HealthInfo Metadata Signature Verified successfully!
+File downloaded at tmp_downloads/cglib:cglib-3.3.0-2024_02_05_11:17:58/ca.crt
+VexInfo Certificates Verified successfully!
+VexInfo Metadata Signature Verified successfully!
+```
 
 *Please refer to the help section (use `-h` flag) of the tool for specific instructions on each command, including available options and their usage.*
