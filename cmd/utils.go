@@ -191,7 +191,7 @@ func parseBuildInfoJSON(jsonFile, suffix string) (sigURL, gcpKmsKey string, buil
 
 	// Get url of the signature zip of the package.
 	for _, element := range sbomData.Packages {
-		if element.Spdxid[-len(suffix):] == suffix: {
+		if element.Spdxid[-len(suffix):] == suffix {
 			for _, val := range element.ExternalRefs {
 				if val.ReferenceCategory == "OTHER" {
 					sigURL = val.ReferenceLocator
@@ -245,7 +245,7 @@ func parsePremiumBuildInfoJSON(jsonFile, suffix string) (sigDetails SigDetails, 
 
 	// Get signature Details of the package.
 	for _, element := range sbomData.Packages {
-		if element.Spdxid[-len(suffix):] == suffix:{
+		if element.Spdxid[-len(suffix):] == suffix{
 			comment := element.Annotations[0].Comment
 			if err = json.Unmarshal([]byte(comment), &sigDetails); err != nil {
 				return SigDetails{}, "", nil, fmt.Errorf("failed to unmarshal JSON data: %v", err)
