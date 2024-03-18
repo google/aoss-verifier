@@ -187,17 +187,17 @@ func verifyPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFilePath
 		return verifyNONPremiumPackage(cmd, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version, disableDeletes, verifyBuildProvenance, disableCertificateVerification)
 	}
 
-	spdxID := ""
+	suffix := ""
 	if language == "java" {
-		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v.jar", strings.Split(packageID, ":")[1], version)
+		suffix = ".jar"
 	} else if language == "python" {
-		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v-py3-none-any.whl", packageID, version)
+		suffix = ".whl"
 	} else if language == "javascript" || jsonData.HealthInfo == "" {
 		cmd.Printf("%s %s is not built by AOSS.\n", packageID, version)
 		return nil
 	}
 
-	sigDetails, provenancePublicKey, buildProvSig, err := parsePremiumBuildInfoJSON(jsonFile, spdxID)
+	sigDetails, provenancePublicKey, buildProvSig, err := parsePremiumBuildInfoJSON(jsonFile, suffix)
 	if err != nil {
 		return err
 	}
@@ -306,14 +306,14 @@ func verifyNONPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFileP
 		return err
 	}
 
-	spdxID := ""
+	suffix := ""
 	if language == "java" {
-		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v.jar", strings.Split(packageID, ":")[1], version)
+		suffix = ".jar"
 	} else {
-		spdxID = fmt.Sprintf("SPDXRef-Package-%v-%v-py3-none-any.whl", packageID, version)
+		suffix = ".whl"
 	}
 
-	sigURL, cryptokey, buildProvSig, err := parseBuildInfoJSON(filepath.Join(destDir, "buildInfo.json"), spdxID)
+	sigURL, cryptokey, buildProvSig, err := parseBuildInfoJSON(filepath.Join(destDir, "buildInfo.json"), suffix)
 	if err != nil {
 		return err
 	}
