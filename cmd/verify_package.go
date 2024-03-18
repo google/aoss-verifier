@@ -201,7 +201,6 @@ func verifyPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFilePath
 	if err != nil {
 		return err
 	}
-
 	cert, err := parseCertificate([]byte(sigDetails.CertInfo.Cert))
 	if err != nil {
 		return err
