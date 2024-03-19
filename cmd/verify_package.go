@@ -231,6 +231,7 @@ func verifyPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFilePath
 	if err != nil {
 		return fmt.Errorf("failed to read artifact file: %v", err)
 	}
+
 	ok, err := verifyDigest(bytes, sigDetails.Digest[0].Digest)
 	if !ok {
 		if err != nil {
@@ -296,7 +297,8 @@ func verifyNONPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFileP
 	obj := fmt.Sprintf("%s/%s/%s/buildinfo.zip", language, packageID, version)
 	zip := filepath.Join(destDir, "buildinfo.zip")
 	if err := downloadFromGCS(cmd.Context(), serviceAccountKeyFilePath, metadataBuckets[1], obj, zip); err != nil {
-		return err
+		cmd.Printf("%s %s is not built by AOSS.\n", packageID, version)
+		return nil
 	} else {
 		cmd.Printf("File downloaded at %s\n", zip)
 	}
