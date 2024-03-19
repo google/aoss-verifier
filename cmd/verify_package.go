@@ -186,15 +186,15 @@ func verifyPremiumPackage(cmd *cobra.Command, destDir, serviceAccountKeyFilePath
 	if err = json.Unmarshal(bytes, &jsonData); err != nil {
 		return verifyNONPremiumPackage(cmd, destDir, serviceAccountKeyFilePath, artifactPath, language, packageID, version, disableDeletes, verifyBuildProvenance, disableCertificateVerification)
 	}
-
 	suffix := ""
-	if language == "java" {
+
+	if language == "javascript" || len(jsonData.HealthInfo) == 0 {
+		cmd.Printf("%s %s is not built by AOSS.\n", packageID, version)
+		return nil
+	} else if language == "java" {
 		suffix = ".jar"
 	} else if language == "python" {
 		suffix = ".whl"
-	} else if language == "javascript" || jsonData.HealthInfo == "" {
-		cmd.Printf("%s %s is not built by AOSS.\n", packageID, version)
-		return nil
 	}
 
 	sigDetails, provenancePublicKey, buildProvSig, err := parsePremiumBuildInfoJSON(jsonFile, suffix)
