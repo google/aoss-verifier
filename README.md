@@ -126,7 +126,7 @@ $ aoss-verifier verify-metadata --metadata_type TYPE --language LANGUAGE --packa
 >
 > ARTIFACT_PATH: path to the downloaded metadata file required to verify premium metadata
 
-#### Example 1
+#### Example to verify Non-Premium metadata
 
 ```command
 $ aoss-verifier verify-metadata --metadata_type vexinfo --language java --package_id commons-codec:commons-codec --version 1.15
@@ -139,7 +139,7 @@ Certificates verified successfully!
 Metadata Signature Verified successfully!
 ```
 
-#### Example 2
+#### Example to verify Premium metadata
 
 ```command
 $ aoss-verifier verify-metadata --metadata_type premiuminfo --language java --package_id cglib:cglib --version 3.3.0 --artifact_path target/dependency/metadata.json
