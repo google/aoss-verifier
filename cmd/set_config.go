@@ -15,27 +15,25 @@
 package cmd
 
 import (
+    "bufio"
     "fmt"
     "log"
+    "os"
     "os/user"
     "path/filepath"
-    "os"
-    "bufio"
 
     "github.com/spf13/cobra"
     "github.com/spf13/viper"
 )
-
 
 const (
     configFileName = ".aoss-verifier"
     configFileType = "yaml"
 )
 
-
 var (
     homeDir string
-    
+
     setConfigCmd = &cobra.Command{
         Use:   "set-config service_account_key_file",
         Short: "Set the configuration settings",
@@ -47,7 +45,6 @@ var (
         },
     }
 )
-
 
 func init() {
     rootCmd.AddCommand(setConfigCmd)
@@ -65,20 +62,19 @@ func init() {
     viper.AddConfigPath(homeDir)
 }
 
-
 func setConfig(cmd *cobra.Command, args []string) error {
     // Check if the service account key file path is provided.
     if len(args) == 0 {
-        return fmt.Errorf("Please specify the service account key file path")
+        return fmt.Errorf("please specify the service account key file path")
     }
 
     configFilePath := filepath.Join(homeDir, ".aoss-verifier.yaml")
     // If config file exists already, os.Create will truncate and update.
     file, err := os.Create(configFilePath)
-    defer file.Close()
     if err != nil {
         return err
     }
+    defer file.Close()
 
     // Write the service account key file path to the config file.
     writer := bufio.NewWriter(file)
