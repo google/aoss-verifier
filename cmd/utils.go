@@ -221,25 +221,25 @@ func parseBuildInfoJSON(jsonFile, suffix string) (sigURL, gcpKmsKey string, buil
     return sigURL, gcpKmsKey, buildProvSig, nil
 }
 
-func parsePremiumBuildInfoJSON(jsonFile, suffix string) (sigDetails SigDetails, provenancePublicKey string, buildProvSig []byte, err error) {
+func parsePremiumBuildInfoJSON(jsonFile, suffix string) (sigDetails *SigDetails, provenancePublicKey string, buildProvSig []byte, err error) {
     // Read the JSON file.
     data, err := os.ReadFile(jsonFile)
     if err != nil {
-        return SigDetails{}, "", nil, fmt.Errorf("failed to read JSON file: %v", err)
+        return nil, "", nil, fmt.Errorf("failed to read JSON file: %v", err)
     }
 
     var amalgamView *amalgamView
     if err = json.Unmarshal(data, &amalgamView); err != nil {
-        return SigDetails{}, "", nil, fmt.Errorf("failed to unmarshal JSON data: %v", err)
+        return nil, "", nil, fmt.Errorf("failed to unmarshal JSON data: %v", err)
     }
 
     var jsonData *premiumBuildInfo
     if err = json.Unmarshal([]byte(amalgamView.BuildInfo), &jsonData); err != nil {
-        return SigDetails{}, "", nil, fmt.Errorf("failed to unmarshal buildInfo JSON data: %v", err)
+        return nil, "", nil, fmt.Errorf("failed to unmarshal buildInfo JSON data: %v", err)
     }
     var sbomData *sbom
     if err = json.Unmarshal([]byte(jsonData.Sbom), &sbomData); err != nil {
-        return SigDetails{}, "", nil, fmt.Errorf("failed to unmarshal 'sbom' data %v: %v", jsonData.Sbom, err)
+        return nil, "", nil, fmt.Errorf("failed to unmarshal 'sbom' data %v: %v", jsonData.Sbom, err)
     }
 
     // Get signature Details of the package.
@@ -247,20 +247,20 @@ func parsePremiumBuildInfoJSON(jsonFile, suffix string) (sigDetails SigDetails, 
         if strings.HasSuffix(element.Spdxid, suffix) {
             comment := element.Annotations[0].Comment
             if err = json.Unmarshal([]byte(comment), &sigDetails); err != nil {
-                return SigDetails{}, "", nil, fmt.Errorf("failed to unmarshal JSON data: %v", err)
+                return nil, "", nil, fmt.Errorf("failed to unmarshal JSON data: %v", err)
             }
         }
     }
 
     // Get build provenance signatures and public key.
     if len(jsonData.BuildDetails) < 1 {
-        return SigDetails{}, "", nil, fmt.Errorf("couldn't get build details")
+        return nil, "", nil, fmt.Errorf("couldn't get build details")
     }
     if len(jsonData.BuildDetails[0].BuildProvenances) < 1 {
-        return SigDetails{}, "", nil, fmt.Errorf("couldn't get build provenance details")
+        return nil, "", nil, fmt.Errorf("couldn't get build provenance details")
     }
     if len(jsonData.BuildDetails[0].BuildProvenances[0].Envelope.Signatures) < 1 {
-        return SigDetails{}, "", nil, fmt.Errorf("couldn't get build provenance signature")
+        return nil, "", nil, fmt.Errorf("couldn't get build provenance signature")
     }
 
     envelopeSig := jsonData.BuildDetails[0].BuildProvenances[0].Envelope.Signatures[0]
