@@ -21,13 +21,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/cobra"
+
 	"slices"
 	"strings"
 	"time"
 	"unicode"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const metadataTypeFlagName = "metadata_type"
@@ -54,8 +54,8 @@ func init() {
 	verifyMetadataCmd.Flags().StringP(packageIdFlagName, "i", "", "Package ID")
 	verifyMetadataCmd.Flags().StringP(versionFlagName, "v", "", "Version")
 	verifyMetadataCmd.Flags().StringP(artifactPathFlagName, "p", "", "Data file path")
-	verifyMetadataCmd.Flags().StringP(tempDownloadsPathFlagName, "d", "", "temp downloads directory path")
-	verifyMetadataCmd.Flags().String(serviceAccountKeyFilePathFlagName, "", "Path to the service account key file")
+	verifyMetadataCmd.Flags().StringP(tempDownloadsPathFlagName, "d", "", "Path for temporary downloads")
+
 	verifyMetadataCmd.Flags().Bool(disableCertificateVerificationFlagName, false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
 	verifyMetadataCmd.Flags().Bool(disableDeletesFlagName, false, "Disable deleting the downloaded files")
 }
@@ -63,7 +63,6 @@ func init() {
 // packageStandardMetadataOptions defines the options for verifyStandardMetadata function.
 type packageStandardMetadataOptions struct {
 	destDir                        string
-	serviceAccountKeyFilePath      string
 	language                       string
 	packageID                      string
 	version                        string
@@ -112,11 +111,6 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	serviceAccountKeyFilePath, err := cmd.Flags().GetString(serviceAccountKeyFilePathFlagName)
-	if err != nil {
-		return err
-	}
-
 	metadata_type, err := cmd.Flags().GetString(metadataTypeFlagName)
 	if err != nil {
 		return err
@@ -126,33 +120,17 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("metadata type should be either of buildinfo, vexinfo, healthinfo or premiuminfo")
 	}
 
-	// If the user didn't use the --service_account_key_file flag
-	if serviceAccountKeyFilePath == "" {
-		// Read config file.
-		if err := viper.ReadInConfig(); err != nil {
-			return fmt.Errorf("failed to read config file: %v", err)
-		}
-
-		serviceAccountKeyFilePath = viper.GetString("service_account_key_file")
-	}
-
-	// Check if the service account key file exists.
-	if _, err := os.Stat(serviceAccountKeyFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("service account key file not found at %s", serviceAccountKeyFilePath)
-	}
-
-	// Check if the service account key file has a JSON extension.
-	if !strings.HasSuffix(serviceAccountKeyFilePath, ".json") {
-		return fmt.Errorf("service account key file must be in JSON format\nUse set-config to update")
-	}
-
 	// Create temporary downloads directory.
 	downloadsDir, err := cmd.Flags().GetString(tempDownloadsPathFlagName)
 	if err != nil {
 		return err
 	}
 	if downloadsDir == "" {
-		downloadsDir = "tmp_downloads"
+		downloadsDir, err = os.MkdirTemp(os.TempDir(), "aoss-verifier-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(downloadsDir)
 	}
 	if _, err := os.Stat(downloadsDir); os.IsNotExist(err) {
 		if err := os.Mkdir(downloadsDir, os.ModePerm); err != nil {
@@ -171,7 +149,6 @@ func verifyMetadata(cmd *cobra.Command, args []string) error {
 	}
 
 	return verifyStandardMetadata(cmd, packageStandardMetadataOptions{
-		serviceAccountKeyFilePath:      serviceAccountKeyFilePath,
 		destDir:                        destDir,
 		language:                       language,
 		packageID:                      packageID,
@@ -269,7 +246,7 @@ func verifyStandardMetadata(cmd *cobra.Command, opts packageStandardMetadataOpti
 	ob := fmt.Sprintf("%s/%s/%s/%s", opts.language, opts.packageID, opts.version, metadata)
 	zipFilePath := filepath.Join(opts.destDir, metadata)
 
-	if err := downloadFromGCS(cmd.Context(), opts.serviceAccountKeyFilePath, metadataBuckets[1], ob, zipFilePath); err != nil {
+	if err := downloadFromGCS(cmd.Context(), metadataBuckets[1], ob, zipFilePath); err != nil {
 		return err
 	} else {
 		cmd.Printf("File downloaded at %s\n", zipFilePath)

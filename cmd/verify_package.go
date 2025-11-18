@@ -26,7 +26,6 @@ import (
 	"unicode"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -36,7 +35,6 @@ const (
 	artifactPathFlagName                   = "artifact_path"
 	tempDownloadsPathFlagName              = "temp_downloads_path"
 	verifyBuildProvenanceFlagName          = "verify_build_provenance"
-	serviceAccountKeyFilePathFlagName      = "service_account_key_file_path"
 	disableCertificateVerificationFlagName = "disable_certificate_verification"
 	disableDeletesFlagName                 = "disable_deletes"
 )
@@ -57,7 +55,6 @@ var verifyPackageCmd = &cobra.Command{
 // packageVerificationOptions defines the options for verifyStandardPackage and verifyPremiumPackage functions.
 type packageVerificationOptions struct {
 	destDir                        string
-	serviceAccountKeyFilePath      string
 	artifactPath                   string
 	language                       string
 	packageID                      string
@@ -77,7 +74,7 @@ func init() {
 	verifyPackageCmd.Flags().StringP(tempDownloadsPathFlagName, "d", "", "temp downloads directory path")
 
 	verifyPackageCmd.Flags().Bool(verifyBuildProvenanceFlagName, false, "Verify build provenance")
-	verifyPackageCmd.Flags().String(serviceAccountKeyFilePathFlagName, "", "Path to the service account key file")
+
 	verifyPackageCmd.Flags().Bool(disableCertificateVerificationFlagName, false, "Disable matching the leaf certificate to the root certificate through the certificate chain")
 	verifyPackageCmd.Flags().Bool(disableDeletesFlagName, false, "Disable deleting the downloaded files")
 }
@@ -123,11 +120,6 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	serviceAccountKeyFilePath, err := cmd.Flags().GetString(serviceAccountKeyFilePathFlagName)
-	if err != nil {
-		return err
-	}
-
 	disableCertificateVerification, err := cmd.Flags().GetBool(disableCertificateVerificationFlagName)
 	if err != nil {
 		return err
@@ -138,33 +130,17 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// If the user didn't use the --service_account_key_file flag
-	if serviceAccountKeyFilePath == "" {
-		// Read config file.
-		if err := viper.ReadInConfig(); err != nil {
-			return fmt.Errorf("failed to read config file: %v", err)
-		}
-
-		serviceAccountKeyFilePath = viper.GetString("service_account_key_file")
-	}
-
-	// Check if the service account key file exists.
-	if _, err := os.Stat(serviceAccountKeyFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("service account key file not found at %s", serviceAccountKeyFilePath)
-	}
-
-	// Check if the service account key file has a JSON extension.
-	if !strings.HasSuffix(serviceAccountKeyFilePath, ".json") {
-		return fmt.Errorf("service account key file must be in JSON format\nUse set-config to update")
-	}
-
 	// Create temporary downloads directory.
 	downloadsDir, err := cmd.Flags().GetString(tempDownloadsPathFlagName)
 	if err != nil {
 		return err
 	}
 	if downloadsDir == "" {
-		downloadsDir = "tmp_downloads"
+		downloadsDir, err = os.MkdirTemp(os.TempDir(), "aoss-verifier-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(downloadsDir)
 	}
 	if _, err := os.Stat(downloadsDir); os.IsNotExist(err) {
 		if err := os.Mkdir(downloadsDir, os.ModePerm); err != nil {
@@ -180,7 +156,6 @@ func verifyPackage(cmd *cobra.Command, args []string) error {
 
 	return verifyPremiumPackage(cmd, packageVerificationOptions{
 		destDir:                        destDir,
-		serviceAccountKeyFilePath:      serviceAccountKeyFilePath,
 		artifactPath:                   artifactPath,
 		language:                       language,
 		packageID:                      packageID,
@@ -195,7 +170,7 @@ func verifyPremiumPackage(cmd *cobra.Command, opts packageVerificationOptions) e
 	// Authenticate to GCS and download metadata.
 	obj := fmt.Sprintf("%s/%s/%s/metadata.json", opts.language, opts.packageID, opts.version)
 	jsonFile := filepath.Join(opts.destDir, fmt.Sprintf("%s_%s_%s_metadata.json", opts.language, opts.packageID, opts.version))
-	if err := downloadFromGCS(cmd.Context(), opts.serviceAccountKeyFilePath, metadataBuckets[0], obj, jsonFile); err != nil {
+	if err := downloadFromGCS(cmd.Context(), metadataBuckets[0], obj, jsonFile); err != nil {
 		return verifyStandardPackage(cmd, opts)
 	} else {
 		cmd.Printf("File downloaded at %s\n", jsonFile)
@@ -319,7 +294,7 @@ func verifyStandardPackage(cmd *cobra.Command, opts packageVerificationOptions) 
 	// Authenticate to GCS and download metadata.
 	obj := fmt.Sprintf("%s/%s/%s/buildinfo.zip", opts.language, opts.packageID, opts.version)
 	zip := filepath.Join(opts.destDir, "buildinfo.zip")
-	if err := downloadFromGCS(cmd.Context(), opts.serviceAccountKeyFilePath, metadataBuckets[1], obj, zip); err != nil {
+	if err := downloadFromGCS(cmd.Context(), metadataBuckets[1], obj, zip); err != nil {
 		cmd.Printf("%s %s is not built by AOSS.\n", opts.packageID, opts.version)
 		return nil
 	} else {
@@ -348,7 +323,7 @@ func verifyStandardPackage(cmd *cobra.Command, opts packageVerificationOptions) 
 		return err
 	}
 	sigzipPath := filepath.Join(opts.destDir, "package_signature.zip")
-	if err := downloadFromGCS(cmd.Context(), opts.serviceAccountKeyFilePath, bucket, obj, sigzipPath); err != nil {
+	if err := downloadFromGCS(cmd.Context(), bucket, obj, sigzipPath); err != nil {
 		return err
 	} else {
 		cmd.Printf("File downloaded at %s\n", sigzipPath)
@@ -437,7 +412,7 @@ func verifyStandardPackage(cmd *cobra.Command, opts packageVerificationOptions) 
 		obj = fmt.Sprintf("keys/%s-public.pem", cryptokey)
 		publicKeyPath := filepath.Join(opts.destDir, "public.pem")
 		buildProvSigPath := filepath.Join(opts.destDir, "signature.sig")
-		if err := downloadFromGCS(cmd.Context(), opts.serviceAccountKeyFilePath, bucket, obj, publicKeyPath); err != nil {
+		if err := downloadFromGCS(cmd.Context(), bucket, obj, publicKeyPath); err != nil {
 			return err
 		} else {
 			cmd.Printf("File downloaded at %s\n", publicKeyPath)

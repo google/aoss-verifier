@@ -35,8 +35,7 @@ import (
     "strings"
 
     "cloud.google.com/go/storage"
-    "google.golang.org/api/option"
-)
+    )
 
 const rootCertURL = "https://privateca-content-6333d504-0000-2df7-afd6-30fd38154590.storage.googleapis.com/a2c725a592f1d586f1f8/ca.crt"
 
@@ -106,11 +105,11 @@ type sbom struct {
     } `json:"packages"`
 }
 
-func downloadFromGCS(ctx context.Context, serviceAccountKeyFilePath string, bucketName string, objectName string, filePath string) error {
-    // Authenticate using the service account key file.
-    client, err := storage.NewClient(ctx, option.WithCredentialsFile(serviceAccountKeyFilePath))
+func downloadFromGCS(ctx context.Context, bucketName string, objectName string, filePath string) error {
+    // Create a new storage client with Application Default Credentials.
+    client, err := storage.NewClient(ctx)
     if err != nil {
-        return fmt.Errorf("failed to authenticate to GCS: %v", err)
+        return fmt.Errorf("failed to create storage client: %v", err)
     }
     // Close the client.
     defer client.Close()

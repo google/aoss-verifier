@@ -8,52 +8,50 @@ aoss-verifier provides a streamline user experience for verification of authenti
 Before using this tool, make sure you have the following in place:
 - Go is installed on your system. If not, please install it from the [official Go website](https://golang.org/doc/install)
 - [Cosign](https://github.com/sigstore/cosign), a third party tool required for verifying the build provenance, is correctly installed
-- Generate and download the [service account key](https://cloud.google.com/iam/docs/keys-create-delete#creating)
+- Authenticate to Google Cloud by setting up Application Default Credentials (ADC). You can do this in one of two ways:
+  - Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of a service account key file.
+  - Run `gcloud auth application-default login`.
 
 
 ## Installation
 
-To install this tool, follow these steps:
-- Clone this repository and install aoss-verifier tool
-```command
+Follow these steps to install the tool.
+
+First, clone this repository and install aoss-verifier tool:
+
+```sh
 $ git clone https://github.com/google/aoss-verifier.git
 $ cd aoss-verifier
 $ go mod download
 $ go install aoss-verifier
 ```
+
 This will compile the tool and install it to `$(go env GOPATH)/bin`
 
-- Users are advised to add GOPATH to their environment PATH variable for seamless usage
-```command
+If not done already, add `GOPATH` to the environment `PATH` variable:
+
+```sh
 $ export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
-
 ## Usages
 
-Once the tool is installed, you can use it by executing the `aoss-verifier` command followed by the desired command and options.
+Once installed, you can use it by executing the `aoss-verifier` command followed by the desired command and options.
 
 If you see a `Command aoss-verifier not found` error, make sure that the tool is correctly installed and the `$(go env GOPATH)/bin` is exported.
 
-To learn more about aoss-verifier usages, run `aoss-verifier help`.
-
-
-### Set configuration
-
-```command
-$ aoss-verifier set-config KEY_FILE_PATH
-```
-> where KEY_FILE_PATH is the path to the service account key json file
-
-This will create a hidden config file in the home directory which contains the path to the service account key file that will be used to authenticate to Google Cloud services.
-
+To learn more about usages, run `aoss-verifier help`.
 
 ### Verify package
 
-To verify a package, you’ll need to pass the language, package id, version and the path of the artifact you’re trying to verify via the `--language`, `--package_id`, `--version` and `--artifact_path` flags.
+Pass the language, package id, version, and the path of the artifact you are trying to verify using the `--language`, `--package_id`, `--version` and `--artifact_path` flags.
 
-```command
-$ aoss-verifier verify-package --language LANGUAGE --package_id PACKAGE_ID --version VERSION --artifact_path ARTIFACT_PATH [flags]
+```sh
+$ aoss-verifier verify-package \
+  --language LANGUAGE \
+  --package_id PACKAGE_ID \
+  --version VERSION \
+  --artifact_path ARTIFACT_PATH [flags]
 ```
 
 > where
@@ -70,11 +68,14 @@ $ aoss-verifier verify-package --language LANGUAGE --package_id PACKAGE_ID --ver
 >- jar file for java package
 >- wheel file for python package
 
-
 #### Example
 
-```command
-$ aoss-verifier verify-package --language java --package_id commons-codec:commons-codec --version 1.15 --artifact_path target/dependency/commons-codec-1.15.jar
+```sh
+$ aoss-verifier verify-package \
+  --language java \
+  --package_id commons-codec:commons-codec \
+  --version 1.15 \
+  --artifact_path target/dependency/commons-codec-1.15.jar
 ```
 
 ```
@@ -85,12 +86,17 @@ Certificates verified successfully!
 Signature Verified successfully!
 ```
 
-
 ### Verify build provenance
 
-To additionally verify build provenance, use the `--verify_build_provenance` flag.
-```command
-$ aoss-verifier verify-package --language java --package_id commons-codec:commons-codec --version 1.15 --artifact_path target/dependency/commons-codec-1.15.jar --verify_build_provenance
+To verify build provenance, use the `--verify_build_provenance` flag.
+
+```sh
+$ aoss-verifier verify-package \
+  --language java \
+  --package_id commons-codec:commons-codec \
+  --version 1.15 \
+  --artifact_path target/dependency/commons-codec-1.15.jar \
+  --verify_build_provenance
 ```
 
 ```
@@ -103,13 +109,16 @@ File downloaded at tmp_downloads/commons-codec:commons-codec-1.15-2023_07_04_09:
 Build Provenance verified successfully!
 ```
 
-
 ### Verify metadata
 
-To verify metadata, you'll need to pass the metadata type, language, package id and the version of the package for which it is desired to verify the metadata via the `--metadata_type`, `--language`, `--package_id`, `--version` and `--artifact_path` flags.
+Pass the metadata type, language, package id, and the version of a package to verify metadata `--metadata_type`, `--language`, `--package_id`, `--version` and `--artifact_path` flags.
 
-```command
-$ aoss-verifier verify-metadata --metadata_type TYPE --language LANGUAGE --package_id PACKAGE_ID --version VERSION [flags]
+```sh
+$ aoss-verifier verify-metadata \
+  --metadata_type TYPE \
+  --language LANGUAGE \
+  --package_id PACKAGE_ID \
+  --version VERSION [flags]
 ```
 
 > where
@@ -128,8 +137,12 @@ $ aoss-verifier verify-metadata --metadata_type TYPE --language LANGUAGE --packa
 
 #### Example to verify Non-Premium metadata
 
-```command
-$ aoss-verifier verify-metadata --metadata_type vexinfo --language java --package_id commons-codec:commons-codec --version 1.15
+```sh
+$ aoss-verifier verify-metadata \
+  --metadata_type vexinfo \
+  --language java \
+  --package_id commons-codec:commons-codec \
+  --version 1.15
 ```
 
 ```
@@ -141,8 +154,13 @@ Metadata Signature Verified successfully!
 
 #### Example to verify Premium metadata
 
-```command
-$ aoss-verifier verify-metadata --metadata_type premiuminfo --language java --package_id cglib:cglib --version 3.3.0 --artifact_path target/dependency/metadata.json
+```sh
+$ aoss-verifier verify-metadata \
+  --metadata_type premiuminfo \
+  --language java \
+  --package_id cglib:cglib \
+  --version 3.3.0 \
+  --artifact_path target/dependency/metadata.json
 ```
 
 ```
