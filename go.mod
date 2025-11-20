@@ -23,7 +23,7 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/go-jose/go-jose/v4 v4.0.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
@@ -44,12 +44,12 @@ require (
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.14.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	google.golang.org/api v0.233.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect
