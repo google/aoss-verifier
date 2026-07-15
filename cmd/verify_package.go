@@ -186,9 +186,8 @@ func verifyPremiumPackage(cmd *cobra.Command, opts packageVerificationOptions) e
 	}
 	suffix := ""
 
-	if opts.language == "javascript" || len(jsonData.HealthInfo) == 0 {
-		cmd.Printf("%s %s is not built by AOSS.\n", opts.packageID, opts.version)
-		return nil
+	if opts.language == "javascript"  {
+		suffix = ".tgz"
 	} else if opts.language == "java" {
 		suffix = ".jar"
 	} else if opts.language == "python" {
