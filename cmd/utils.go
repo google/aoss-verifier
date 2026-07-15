@@ -243,7 +243,7 @@ func parsePremiumBuildInfoJSON(jsonFile, suffix string) (sigDetails *SigDetails,
 
     // Get signature Details of the package.
     for _, element := range sbomData.Packages {
-        if strings.HasSuffix(element.Spdxid, suffix) {
+        if strings.HasSuffix(element.Spdxid, suffix) && len(element.Annotations) > 0 {
             comment := element.Annotations[0].Comment
             if err = json.Unmarshal([]byte(comment), &sigDetails); err != nil {
                 return nil, "", nil, fmt.Errorf("failed to unmarshal JSON data: %v", err)
